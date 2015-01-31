@@ -1,5 +1,5 @@
 // COMPUTE ROTOR FLUX ANGLE Code
-#include "ACController.h"
+#include "ACInductionController.h"
 
 /*****************Config bit settings****************/
 _FOSC(0xFFFF & XT_PLL8);//XT_PLL4); // Use XT with external crystal from 4MHz to 10MHz.  FRM Pg. 178
