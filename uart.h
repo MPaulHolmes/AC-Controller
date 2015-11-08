@@ -4,10 +4,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "ACInductionController.h"
+#include "sensorless.h"
 
 
-#define MAX_COMMAND_LENGTH 50
+#define MAX_COMMAND_LENGTH 40
 
 typedef struct UARTCommand_typ {
 	int i;
