@@ -15,45 +15,26 @@ extern void InitializeThrottleAndCurrentVariables(void);
 
 volatile UARTCommand myUARTCommand = {0,0,{0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0},0};
 
-//extern volatile unsigned int LrLmSquared_times128;
-//extern volatile unsigned int LrLmSquared_times128Array[];
-
-extern volatile int largeArrayLoaded;
-extern volatile int captureVariable;
-extern volatile int dataCounter;
 extern volatile int IqRefRef;
 extern volatile int IdRefRef;
 
-//extern volatile int dataDumping;
 extern volatile int maxRPS_times16;
 extern volatile unsigned int faultBits;
 extern volatile SavedValuesStruct savedValues;
 extern volatile SavedValuesStruct2 savedValues2;
-extern volatile unsigned int showDatastreamJustOnce;
-extern volatile unsigned int datastreamPeriod;
 extern unsigned int revCounterMax;
-extern volatile piType pi_Iq;
-extern volatile piType pi_Id;
-extern volatile int piRatio;
-
-extern volatile int piZeroCrossingIndex;
-extern volatile int piGoodValuesIndex;
-extern volatile int piGoodValuesArrayLoaded;
-extern volatile int huntingForGoodPIValues;
-extern volatile int piIterationIndex;
-extern volatile int startNewRotorTest;
-extern volatile int rotorArrayLoaded;
-extern volatile int rotorStartTime;
 	
-extern unsigned int delayBetweenPITests;
-extern unsigned int counter10k;
+extern volatile unsigned int counter10k;
+extern volatile unsigned int counter1k;
+extern volatile piType myPI;
+extern volatile rotorType myRotor;
 
+volatile dataStream myDataStream;
 
 volatile char newChar = 0;
 volatile int echoNewChar = 0;
-
-volatile char string[] = "xxxxxx\r\n";  // just a temp variable to store an integer in the range +/-9999 as text before being transmitted.
-
+volatile dataStream myDataStream;
+volatile char intString[] = "xxxxxxxxxx";
 					//      0         1         2         3         4
 					//      01234567890123456789012345678901234567890	
 char showConfigString[] = {"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"};
@@ -107,262 +88,584 @@ void __attribute__((__interrupt__, auto_psv)) _U2RXInterrupt(void) {
 void ProcessCommand(void) {
 	static int i = 0;
 	if (echoNewChar) {
-	while (echoNewChar) {
-		if (U2STAbits.UTXBF == 0) { // TransmitReady();
-			U2TXREG = newChar; 	// SendCharacter(newChar);
-			if (newChar == 0x0d) {
-				while (1) { 
-					if (U2STAbits.UTXBF == 0) { // TransmitReady();
-						U2TXREG = 0x0a; 	// SendCharacter(line feed);
-						break;
+		while (echoNewChar) {
+			if (U2STAbits.UTXBF == 0) { // TransmitReady();
+				U2TXREG = newChar; 	// SendCharacter(newChar);
+				if (newChar == 0x0d) {
+					while (1) { 
+						if (U2STAbits.UTXBF == 0) { // TransmitReady();
+							U2TXREG = 0x0a; 	// SendCharacter(line feed);
+							break;
+						}
 					}
 				}
+				echoNewChar = 0;
 			}
-			echoNewChar = 0;
 		}
-	}
 	}
 	else {
-	if (myUARTCommand.complete != 1) {	// if the command isn't yet complete, don't try to process it!  Maybe someone is only half-way done with their command.  Ex:  "sav".  Process "sav"?  No!  wait until they type "save<cr>"
-		return;
-	}
-	myUARTCommand.number = 0;	
-	for (i = 0; myUARTCommand.string[i] != 0; i++) {
-		if (myUARTCommand.string[i] == ' ') {
-			myUARTCommand.number = atoi((char *)&myUARTCommand.string[i+1]);
-			myUARTCommand.string[i] = 0;  // null terminate the text portion.			
-			break;
+		if (myUARTCommand.complete != 1) {	// if the command isn't yet complete, don't try to process it!  Maybe someone is only half-way done with their command.  Ex:  "sav".  Process "sav"?  No!  wait until they type "save<cr>"
+			return;
 		}
-	}
-	// Let's say you typed the command kp-id 1035.  The following would have happened:
-	// myUARTCommand.string[] would contain only the text portion of the command, and is terminated with a 0.  string[] = {'k','p',0,?,?,?,?,?,?,?,?,?,?,?,...}
-	// Also, myUARTCommand.number = the number argument after the command. So, number = 1035.
-	if (!strcmp((char *)&myUARTCommand.string[0], "p")) {
-		if (myUARTCommand.number <= 32767u && myUARTCommand.number > 0) {
-			savedValues.Kp_Id = (int)(myUARTCommand.number); 
-			savedValues.Kp_Iq = (int)(myUARTCommand.number); 
-
-			InitPIStruct();
-//			ShowConfig((unsigned)1 << 0);
+		myUARTCommand.number = 0;	
+		for (i = 0; myUARTCommand.string[i] != 0; i++) {
+			if (myUARTCommand.string[i] == ' ') {
+				myUARTCommand.number = atoi((char *)&myUARTCommand.string[i+1]);
+				myUARTCommand.string[i] = 0;  // null terminate the text portion.			
+				break;
+			}
 		}
-	}
-	else if (!strcmp((char *)&myUARTCommand.string[0], "i")){ 
-		if (myUARTCommand.number <= 32767u && myUARTCommand.number > 0) {
-			savedValues.Ki_Id = (int)(myUARTCommand.number); 
-			savedValues.Ki_Iq = (int)(myUARTCommand.number); 
-			InitPIStruct();
-//			ShowConfig((unsigned)1 << 0);
+		// Let's say you typed the command "kp 1035".  The following would have happened:
+		// myUARTCommand.string[] would contain only the text portion of the command, and is terminated with a 0.  string[] = {'p',0,?,?,?,?,?,?,?,?,?,?,?,...}
+		// Also, myUARTCommand.number = the number argument after the command. So, number = 1035.
+		if (!strcmp((char *)&myUARTCommand.string[0], "kp")) {
+			if (myUARTCommand.number <= 32767u && myUARTCommand.number > 0) {
+				savedValues.Kp = (int)(myUARTCommand.number); 
+				InitPIStruct();
+	//			ShowConfig((unsigned)1 << 0);
+			}
 		}
-	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "current-sensor-amps-per-volt")) {  // 
-		if (myUARTCommand.number <= 480 && myUARTCommand.number > 0) {
-			savedValues.currentSensorAmpsPerVolt = (int)(myUARTCommand.number); 
-			InitializeThrottleAndCurrentVariables();
-		}	
-	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "max-regen-position")) { 
-		if (myUARTCommand.number <= 1023u && myUARTCommand.number > 0) {
-			savedValues.maxRegenPosition = (int)(myUARTCommand.number); 
-		}	
-	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "min-regen-position")) { 
-		if (myUARTCommand.number <= 1023u && myUARTCommand.number > 0) {
-			savedValues.minRegenPosition = (int)(myUARTCommand.number); 
-		}	
-	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "min-throttle-position")) { 
-		if (myUARTCommand.number <= 1023u && myUARTCommand.number > 0) {
-			savedValues.minThrottlePosition = (int)(myUARTCommand.number); 
+		else if (!strcmp((char *)&myUARTCommand.string[0], "ki")){ 
+			if (myUARTCommand.number <= 32767u && myUARTCommand.number > 0) {
+				savedValues.Ki = (int)(myUARTCommand.number); 
+				InitPIStruct();
+	//			ShowConfig((unsigned)1 << 0);
+			}
 		}
-	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "max-throttle-position")) { 
-		if (myUARTCommand.number <= 1023u && myUARTCommand.number > 0) {
-			savedValues.maxThrottlePosition = (int)(myUARTCommand.number); 
-		}	
-	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "fault-throttle-position")) { 
-		if (myUARTCommand.number <= 1023u && myUARTCommand.number > 0) {
-			savedValues.throttleFaultPosition = (int)(myUARTCommand.number); 
-		}	
-	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "max-battery-amps")) { 
-		if (myUARTCommand.number <= 9999 && myUARTCommand.number > 0) {
-			savedValues.maxBatteryAmps = (int)(myUARTCommand.number); 
-			InitializeThrottleAndCurrentVariables();
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "current-sensor-amps-per-volt")) {  // 
+			if (myUARTCommand.number <= 480 && myUARTCommand.number > 0) {
+				savedValues.currentSensorAmpsPerVolt = (int)(myUARTCommand.number); 
+				InitializeThrottleAndCurrentVariables();
+			}	
 		}
-	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "max-battery-amps-regen")) { 
-		if (myUARTCommand.number <= 9999 && myUARTCommand.number > 0) {
-			savedValues.maxBatteryAmpsRegen = (int)(myUARTCommand.number); 
-			InitializeThrottleAndCurrentVariables();
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "max-regen-position")) { 
+			if (myUARTCommand.number <= 1023u && myUARTCommand.number > 0) {
+				savedValues.maxRegenPosition = (int)(myUARTCommand.number); 
+			}	
 		}
-	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "max-motor-amps")) { 
-		if (myUARTCommand.number <= 999 && myUARTCommand.number > 0) {
-			savedValues.maxMotorAmps = (int)(myUARTCommand.number); 
-			InitializeThrottleAndCurrentVariables();
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "min-regen-position")) { 
+			if (myUARTCommand.number <= 1023u && myUARTCommand.number > 0) {
+				savedValues.minRegenPosition = (int)(myUARTCommand.number); 
+			}	
 		}
-	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "max-motor-amps-regen")) { 
-		if (myUARTCommand.number <= 999 && myUARTCommand.number > 0) {
-			savedValues.maxMotorAmpsRegen = (int)(myUARTCommand.number); 
-			InitializeThrottleAndCurrentVariables();
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "min-throttle-position")) { 
+			if (myUARTCommand.number <= 1023u && myUARTCommand.number > 0) {
+				savedValues.minThrottlePosition = (int)(myUARTCommand.number); 
+			}
 		}
-	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "precharge-time")) { 
-		if (myUARTCommand.number <= 9999 && myUARTCommand.number > 0) {
-			savedValues.prechargeTime = (int)(myUARTCommand.number); 
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "max-throttle-position")) { 
+			if (myUARTCommand.number <= 1023u && myUARTCommand.number > 0) {
+				savedValues.maxThrottlePosition = (int)(myUARTCommand.number); 
+			}	
 		}
-	}
-
-	// NOW WE ARE ON SavedValues2...
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "rotor-time-constant")) { 
-		if (myUARTCommand.number <= ROTOR_TIME_CONSTANT_ARRAY_SIZE+5 && myUARTCommand.number >= 5) {
-			savedValues2.rotorTimeConstantArrayIndex = (int)(myUARTCommand.number-5);   
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "fault-throttle-position")) { 
+			if (myUARTCommand.number <= 1023u && myUARTCommand.number > 0) {
+				savedValues.throttleFaultPosition = (int)(myUARTCommand.number); 
+			}	
 		}
-	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "pole-pairs")) {
-		if (myUARTCommand.number <= 999 && myUARTCommand.number >= 1) {
-			savedValues2.numberOfPolePairs = (int)(myUARTCommand.number); 
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "max-battery-amps")) { 
+			if (myUARTCommand.number <= 9999 && myUARTCommand.number > 0) {
+				savedValues.maxBatteryAmps = (int)(myUARTCommand.number); 
+				InitializeThrottleAndCurrentVariables();
+			}
 		}
-	}
-
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "max-rpm")) { 
-		if (myUARTCommand.number <= 32767 && myUARTCommand.number > 0) {
-			savedValues2.maxRPM = (int)(myUARTCommand.number); 
-			maxRPS_times16 = (((long)savedValues2.maxRPM) << 2) / 15;  // 4/15 to convert to rps_times16
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "max-battery-amps-regen")) { 
+			if (myUARTCommand.number <= 9999 && myUARTCommand.number > 0) {
+				savedValues.maxBatteryAmpsRegen = (int)(myUARTCommand.number); 
+				InitializeThrottleAndCurrentVariables();
+			}
 		}
-	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "throttle-type")) { 
-		if (myUARTCommand.number <= 2 && myUARTCommand.number >= 1) {
-			savedValues2.throttleType = (int)(myUARTCommand.number); 
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "max-motor-amps")) { 
+			if (myUARTCommand.number <= 999 && myUARTCommand.number > 0) {
+				savedValues.maxMotorAmps = (int)(myUARTCommand.number); 
+				InitializeThrottleAndCurrentVariables();
+			}
 		}
-	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "encoder-ticks")) {
-		if (myUARTCommand.number <= 5000u && myUARTCommand.number >= 64) {
-			savedValues2.encoderTicks = (int)(myUARTCommand.number); 
-			revCounterMax = 160000L / (4*savedValues2.encoderTicks);  // 4* because I'm doing 4 times resolution for the encoder. 16,000,000 because revolutions per 16 seconds is computed as:  16*10,000*poscnt * rev/(maxPosCnt*revcounter*(16sec)
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "max-motor-amps-regen")) { 
+			if (myUARTCommand.number <= 999 && myUARTCommand.number > 0) {
+				savedValues.maxMotorAmpsRegen = (int)(myUARTCommand.number); 
+				InitializeThrottleAndCurrentVariables();
+			}
 		}
-	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "sr")) {  // times1024.  So basically mOhms.
-		if (myUARTCommand.number > 0) {
-			savedValues2.statorResistance_times1024 = (int)(myUARTCommand.number);
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "precharge-time")) { 
+			if (myUARTCommand.number <= 9999 && myUARTCommand.number > 0) {
+				savedValues.prechargeTime = (int)(myUARTCommand.number); 
+			}
 		}
-	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "s")) {  // times1024.  So basically mHenries.
-		if (myUARTCommand.number > 0) {
-			savedValues2.statorInductance_times1024 = (int)(myUARTCommand.number);
+		// NOW WE ARE ON SavedValues2...
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "rotor-time-constant")) { 
+			if (myUARTCommand.number <= ROTOR_TIME_CONSTANT_ARRAY_SIZE+5 && myUARTCommand.number >= 5) {
+				myRotor.timeConstantIndex = savedValues2.rotorTimeConstantIndex = (int)(myUARTCommand.number-5);
+			}
 		}
-	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "pack-voltage")) {  // units are volts.
-		if (myUARTCommand.number < 1000 && myUARTCommand.number > 0) {
-			savedValues2.packVoltage = (int)(myUARTCommand.number); 
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "pole-pairs")) {
+			if (myUARTCommand.number <= 999 && myUARTCommand.number >= 1) {
+				savedValues2.numberOfPolePairs = (int)(myUARTCommand.number); 
+			}
 		}
-	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "pi-ratio")) {
-		if (myUARTCommand.number < 1000 && myUARTCommand.number >= 50) {
-			piRatio = (int)(myUARTCommand.number); 
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "max-rpm")) { 
+			if (myUARTCommand.number <= 32767 && myUARTCommand.number > 0) {
+				savedValues2.maxRPM = (int)(myUARTCommand.number); 
+				maxRPS_times16 = (((long)savedValues2.maxRPM) << 2) / 15;  // 4/15 to convert to rps_times16
+			}
 		}
-	}
-//	else if (!strcmp((const char *)&myUARTCommand.string[0], "r")) {
-//		if (myUARTCommand.number <= MAX_ROTOR_INDUCTANCE && myUARTCommand.number >= MIN_ROTOR_INDUCTANCE) {
-//			savedValues2.rotorInductance_times1024 = (int)(myUARTCommand.number);
-			//LrLmSquared_times128 = LrLmSquared_times128Array[savedValues2.rotorInductance_times1024 - MIN_ROTOR_INDUCTANCE]; 
-//		}
-//	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "sensorless")) {
-		if (myUARTCommand.number == 1) {
-			savedValues2.sensorless = 1;
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "throttle-type")) { // 0 means hall effect throttle, or maxOHms to 0 Ohms. 1 means 0 Ohms to maxOhms throttle 
+			if (myUARTCommand.number <= 1) {
+				savedValues2.throttleType = (int)(myUARTCommand.number); 
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "encoder-ticks")) {
+			if (myUARTCommand.number <= 5000u && myUARTCommand.number >= 64) {
+				savedValues2.encoderTicks = (int)(myUARTCommand.number); 
+				revCounterMax = 160000L / (4*savedValues2.encoderTicks);  // 4* because I'm doing 4 times resolution for the encoder. 160,000 because revolutions per 16 seconds is computed as:  16*10,000*poscnt * rev/(maxPosCnt*revcounter*(16sec)
+			}
+		}
+	//	else if (!strcmp((const char *)&myUARTCommand.string[0], "stator-resistance")) {  // times1024.  So basically mOhms.
+	//		if (myUARTCommand.number > 0) {
+	//			savedValues2.statorResistance_times1024 = (int)(myUARTCommand.number);
+	//		}
+	//	}
+	//	else if (!strcmp((const char *)&myUARTCommand.string[0], "stator-inductance")) {  // times1024.  So basically mHenries.
+	//		if (myUARTCommand.number > 0) {
+	//			savedValues2.statorInductance_times1024 = (int)(myUARTCommand.number);
+	//		}
+	//	}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "pack-voltage")) {  // units are volts.
+			if (myUARTCommand.number < 1000 && myUARTCommand.number > 0) {
+				savedValues2.packVoltage = (int)(myUARTCommand.number); 
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "pi-ratio")) {
+			if (myUARTCommand.number < 1000 && myUARTCommand.number >= 50) {
+				myPI.ratioKpKi = (int)(myUARTCommand.number); 
+			}
+		}
+	//	else if (!strcmp((const char *)&myUARTCommand.string[0], "rotor-inductance")) {
+	//		if (myUARTCommand.number <= MAX_ROTOR_INDUCTANCE && myUARTCommand.number >= MIN_ROTOR_INDUCTANCE) {
+	//			savedValues2.rotorInductance_times1024 = (int)(myUARTCommand.number);
+				//LrLmSquared_times128 = LrLmSquared_times128Array[savedValues2.rotorInductance_times1024 - MIN_ROTOR_INDUCTANCE]; 
+	//		}
+	//	}
+	//	else if (!strcmp((const char *)&myUARTCommand.string[0], "sensorless")) {
+	//		if (myUARTCommand.number == 1) {
+	//			savedValues2.sensorless = 1;
+	//		}
+	//		else {
+	//			savedValues2.sensorless = 0;
+	//		}
+	//	}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "run-pi-test")) {
+			myDataStream.period = 0;  // stop the data stream during this test.
+	
+			myRotor.testRunning = 0;
+			myRotor.testFinished = 0;
+	
+			myPI.testRunning = 1;
+			myPI.testFailed = 1;	
+			myPI.testFinished = 0;
+			myPI.zeroCrossingIndex = -1;
+			myPI.previousTestCompletionTime = counter10k;
+			myPI.Kp = myPI.ratioKpKi;
+			myPI.Ki = 1;
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "run-rotor-test")) {
+			myDataStream.period = 0;  // stop the data stream during this test.
+			myPI.testRunning = 0;
+			myPI.testFailed = 1;	
+			myPI.testFinished = 0;
+	
+			myRotor.startTime = counter10k;
+			myRotor.timeConstantIndex = 0;	// always start at zero, and then it will increment up to around 145, giving each rotorTimeConstant candidate 5 seconds to spin the motor the best it can.
+			myRotor.testRunning = 1;
+			myRotor.testFinished = 0;
+			myRotor.maxTestSpeed = 0;
+			myRotor.bestTimeConstantIndex = 0;
+		}
+		else if ((!strcmp((const char *)&myUARTCommand.string[0], "config")) || (!strcmp((const char *)&myUARTCommand.string[0], "settings"))) {
+			ShowConfig(0x0FFFF);
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "data-stream-period")) {  // in milliseconds
+			if (myUARTCommand.number > 0) {
+				myDataStream.period = myUARTCommand.number;
+				myDataStream.showStreamOnce = 0;
+		// bit 15 set: display myDataStream.timer
+		// Bit 14 set: display myDataStream.Id_times10
+		// bit 13 set: display myDataStream.Iq_times10
+		// Bit 12 set: display myDataStream.IdRef_times10
+		// bit 11 set: display myDataStream.IqRef_times10
+		// Bit 10 set: display myDataStream.Vd
+		// bit 9 set: display myDataStream.Vq
+		// Bit 8 set: display myDataStream.Ia_times10
+		// bit 7 set: display myDataStream.Ib_times10
+		// bit 6 set: display myDataStream.Ic_times10
+		// Bit 5 set: display myDataStream.Va
+		// bit 4 set: display myDataStream.Vb
+		// bit 3 set: display myDataStream.Vc
+		// bit 2 set: display myDataStream.percentOfVoltageDiskBeingUsed
+		// bit 1 set: display myDataStream.batteryAmps_times10
+		// bit 0 set: future use
+		//	int dataToDisplaySet2;
+		// Bit 15 set: display myDataStream.rawThrottle
+		// bit 14 set: display myDataStream.throttle
+		// Bit 13 set: display myDataStream.temperature
+		// bit 12 set: display myDataStream.slipSpeedRPM
+		// Bit 11 set: display myDataStream.electricalSpeedRPM
+		// bit 10 set: display myDataStream.mechanicalSpeedRPM
+		// Bit 9-0 set: future use. 
+	
+				if (savedValues2.dataToDisplaySet1 & 32768) {
+					TransmitString("time,");
+				}
+				if (savedValues2.dataToDisplaySet1 & 16384) {
+					TransmitString("Id,");
+				}
+				if (savedValues2.dataToDisplaySet1 & 8192) {
+					TransmitString("Iq,");
+				}
+				if (savedValues2.dataToDisplaySet1 & 4096) {
+					TransmitString("IdRef,");
+				}
+				if (savedValues2.dataToDisplaySet1 & 2048) {
+					TransmitString("IqRef,");
+				}
+				if (savedValues2.dataToDisplaySet1 & 1024) {
+					TransmitString("Vd,");
+				}
+				if (savedValues2.dataToDisplaySet1 & 512) {
+					TransmitString("Vq,");
+				}
+				if (savedValues2.dataToDisplaySet1 & 256) {
+					TransmitString("Ia,");
+				}
+				if (savedValues2.dataToDisplaySet1 & 128) {
+					TransmitString("Ib,");
+				}
+				if (savedValues2.dataToDisplaySet1 & 64) {
+					TransmitString("Ic,");
+				}
+				if (savedValues2.dataToDisplaySet1 & 32) {
+					TransmitString("Va,");
+				}
+				if (savedValues2.dataToDisplaySet1 & 16) {
+					TransmitString("Vb,");
+				}
+				if (savedValues2.dataToDisplaySet1 & 8) {
+					TransmitString("Vc,");
+				}
+				if (savedValues2.dataToDisplaySet1 & 4) {
+					TransmitString("percentVolts,");
+				}
+				if (savedValues2.dataToDisplaySet1 & 2) {
+					TransmitString("batteryAmps,");
+				}
+				if (savedValues2.dataToDisplaySet2 & 32768) {
+					TransmitString("rawThrottle,");
+				}
+				if (savedValues2.dataToDisplaySet2 & 16384) {
+					TransmitString("throttle,");
+				}
+				if (savedValues2.dataToDisplaySet2 & 8192) {
+					TransmitString("temperaure,");
+				}
+				if (savedValues2.dataToDisplaySet2 & 4096) {
+					TransmitString("slipSpeed,");
+				}
+				if (savedValues2.dataToDisplaySet2 & 2048) {
+					TransmitString("electricalSpeed,");
+				}
+				if (savedValues2.dataToDisplaySet2 & 1024) {
+					TransmitString("mechanicalSpeed,");
+				}
+				TransmitString("\r\n");
+				myDataStream.startTime = counter1k;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "data")) {  // show the datastream one time.
+			myDataStream.period = 1;
+			myDataStream.showStreamOnce = 1;
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-time")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet1 |= 32768;
+			}
+			else {
+				savedValues2.dataToDisplaySet1 &= ~32768;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-id")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet1 |= 16384;
+			}
+			else {
+				savedValues2.dataToDisplaySet1 &= ~16384;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-iq")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet1 |= 8192;
+			}
+			else {
+				savedValues2.dataToDisplaySet1 &= ~8192;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-idref")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet1 |= 4096;
+			}
+			else {
+				savedValues2.dataToDisplaySet1 &= ~4096;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-iqref")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet1 |= 2048;
+			}
+			else {
+				savedValues2.dataToDisplaySet1 &= ~2048;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-vd")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet1 |= 1024;
+			}
+			else {
+				savedValues2.dataToDisplaySet1 &= ~1024;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-vq")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet1 |= 512;
+			}
+			else {
+				savedValues2.dataToDisplaySet1 &= ~512;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-ia")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet1 |= 256;
+			}
+			else {
+				savedValues2.dataToDisplaySet1 &= ~256;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-ib")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet1 |= 128;
+			}
+			else {
+				savedValues2.dataToDisplaySet1 &= ~128;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-ic")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet1 |= 64;
+			}
+			else {
+				savedValues2.dataToDisplaySet1 &= ~64;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-va")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet1 |= 32;
+			}
+			else {
+				savedValues2.dataToDisplaySet1 &= ~32;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-vb")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet1 |= 16;
+			}
+			else {
+				savedValues2.dataToDisplaySet1 &= ~16;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-vc")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet1 |= 8;
+			}
+			else {
+				savedValues2.dataToDisplaySet1 &= ~8;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-percent-volts")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet1 |= 4;
+			}
+			else {
+				savedValues2.dataToDisplaySet1 &= ~4;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-battery-amps")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet1 |= 2;
+			}
+			else {
+				savedValues2.dataToDisplaySet1 &= ~2;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-raw-throttle")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet2 |= 32768;
+			}
+			else {
+				savedValues2.dataToDisplaySet2 &= ~32768;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-throttle")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet2 |= 16384;
+			}
+			else {
+				savedValues2.dataToDisplaySet2 &= ~16384;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-temperature")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet2 |= 8192;
+			}
+			else {
+				savedValues2.dataToDisplaySet2 &= ~8192;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-slip-speed")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet2 |= 4096;
+			}
+			else {
+				savedValues2.dataToDisplaySet2 &= ~4096;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-electrical-speed")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet2 |= 2048;
+			}
+			else {
+				savedValues2.dataToDisplaySet2 &= ~2048;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-mechanical-speed")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet2 |= 1024;
+			}
+			else {
+				savedValues2.dataToDisplaySet2 &= ~1024;
+			}
+		}
+		else if (myUARTCommand.string[0] == 0) {  // A carriage return.
+			if (myRotor.testRunning) {  // Stop the rotor test if it was running, and just keep the best value of the rotor time constant that you had found up to this point.
+				savedValues2.rotorTimeConstantIndex = myRotor.bestTimeConstantIndex;
+				myRotor.testRunning = 0;
+				myRotor.testFinished = 1;
+				IdRefRef = 0;
+				IqRefRef = 0;
+			}
+			else if (myPI.testRunning) { // Stop the PI test if it was running.
+				myPI.testRunning = 0;
+				myPI.testFailed = 1;
+				myPI.testFinished = 1;
+			}
+			myDataStream.period = 0;  // Stop the data stream if it was running.
+			// if the PI test is running, terminate it.
+			// if the rotor test is running, stop and use the current best rotorTimeConstant that has been found so far.
+			ShowMenu();
+		}
+		else if (!strcmp((const char*)&myUARTCommand.string[0], "2")) {
+			if (IqRefRef < 1000) {
+				IqRefRef += 10;
+				if (IqRefRef > 0) {
+					IdRefRef = IqRefRef;
+				}
+				else {
+					IdRefRef = -IqRefRef;
+				}
+			}
+		}
+		else if (!strcmp((const char*)&myUARTCommand.string[0], "1")) {
+			if (IqRefRef > -1000) {
+				IqRefRef -= 10;
+				if (IqRefRef > 0) {
+					IdRefRef = IqRefRef;
+				}
+				else {
+					IdRefRef = -IqRefRef;
+				}
+			}
+		}
+		else if (!strcmp((const char*)&myUARTCommand.string[0], "0")) {
+	//		faultBits |= 16384;
+			IdRefRef = 0;
+			IqRefRef = 0;
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "?")) {  // show the valid list of commands
+			TransmitString("List of valid commands:\r\n");
+			TransmitString("kp xxx (range 0-32767)\r\n");
+			TransmitString("ki xxx (range 0-32767)\r\n");
+			TransmitString("current-sensor-amps-per-volt xxx (range 0-480)\r\n");
+			TransmitString("max-regen-position xxx (range 0-1023)\r\n");
+			TransmitString("min-regen-position xxx (range 0-1023)\r\n");
+			TransmitString("min-throttle-position xxx (range 0-1023)\r\n");
+			TransmitString("max-throttle-position xxx (range 0-1023)\r\n");
+			TransmitString("fault-throttle-position xxx (range 0-1023)\r\n");
+			TransmitString("max-battery-amps xxx (range 0-999)\r\n");
+			TransmitString("max-battery-amps-regen xxx (range 0-999)\r\n");
+			TransmitString("max-motor-amps xxx (range 0-999)\r\n");
+			TransmitString("max-motor-amps-regen xxx (range 0-999)\r\n");
+			TransmitString("precharge-time xxx (in tenths of a sec. range 0-9999)\r\n");
+			TransmitString("rotor-time-constant xxx (in millisec. range 0-150)\r\n");
+			TransmitString("pole-pairs xxx (range 0-999)\r\n");
+			TransmitString("max-rpm xxx (range 0-32767)\r\n");
+			TransmitString("throttle-type xxx (range 0-1)\r\n");
+			TransmitString("encoder-ticks xxx (range 64-5000)\r\n");
+			TransmitString("pack-voltage xxx (range 0-999)\r\n");
+			TransmitString("pi-ratio xxx (range 50-1000.  pi-ratio = Kp/Ki)\r\n");
+			TransmitString("run-pi-test\r\n");
+			TransmitString("run-rotor-test\r\n");
+			TransmitString("config\r\n");
+			TransmitString("data-stream-period xxx (range 0-32767)\r\n");
+			TransmitString("data\r\n");
+			TransmitString("stream-time xxx (range 0-1)\r\n");
+			TransmitString("stream-id xxx (range 0-1)\r\n");
+			TransmitString("stream-iq xxx (range 0-1)\r\n");
+			TransmitString("stream-idref xxx (range 0-1)\r\n");
+			TransmitString("stream-iqref xxx (range 0-1)\r\n");
+			TransmitString("stream-vd xxx (range 0-1)\r\n");
+			TransmitString("stream-vq xxx (range 0-1)\r\n");
+			TransmitString("stream-ia xxx (range 0-1)\r\n");
+			TransmitString("stream-ib xxx (range 0-1)\r\n");
+			TransmitString("stream-ic xxx (range 0-1)\r\n");
+			TransmitString("stream-va xxx (range 0-1)\r\n");
+			TransmitString("stream-vb xxx (range 0-1)\r\n");
+			TransmitString("stream-vc xxx (range 0-1)\r\n");
+			TransmitString("stream-percent-volts xxx (range 0-1)\r\n");
+			TransmitString("stream-battery-amps xxx (range 0-1)\r\n");
+			TransmitString("stream-raw-throttle xxx (range 0-1)\r\n");
+			TransmitString("stream-throttle xxx (range 0-1)\r\n");
+			TransmitString("stream-temperature xxx (range 0-1)\r\n");
+			TransmitString("stream-slip-speed xxx (range 0-1)\r\n");
+			TransmitString("stream-electrical-speed xxx (range 0-1)\r\n");
+			TransmitString("stream-mechanical-speed xxx (range 0-1)\r\n");
+			TransmitString("<carriage return> (this stops the data stream)\r\n");
 		}
 		else {
-			savedValues2.sensorless = 0;
+			TransmitString("Invalid command.  Type '?' to see a valid list of commands.\r\n");
 		}
-	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "run-pi-test")) {
-		startNewRotorTest = 0;
-		rotorArrayLoaded = 0;
-
-		huntingForGoodPIValues = 1;
-		piIterationIndex = 0;	
-		piGoodValuesArrayLoaded = 0;
-		piGoodValuesIndex = 0;
-		piZeroCrossingIndex = -1;
-		delayBetweenPITests = counter10k;
-		pi_Iq.P = piRatio;
-		pi_Iq.I = 1;
-		pi_Id.P = piRatio;
-		pi_Id.I = 1;
-	}
-
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "run-rotor-test")) {
-		huntingForGoodPIValues = 0;
-		piGoodValuesArrayLoaded = 0;
-		startNewRotorTest = 1;
-		savedValues2.rotorTimeConstantArrayIndex = 0;	
-		rotorArrayLoaded = 0;
-		rotorStartTime = counter10k;
-	}
-	else if ((!strcmp((const char *)&myUARTCommand.string[0], "config")) || (!strcmp((const char *)&myUARTCommand.string[0], "settings"))) { // "encoder-ticks"
-		ShowConfig(0x0FFFF);
-	}
-	else if (myUARTCommand.string[0] == 0) {
-		ShowMenu();
-	}
-	else if (!strcmp((const char *)&myUARTCommand.string[0], "a")) { //run-inductance-test")) {
-		captureVariable = 1;
-//		if (dataDumping) {
-//			dataDumping = 0;
-//			TransmitString(
-//		}
-//		else dataDumping = 1;
-	}
-	else if (!strcmp((const char*)&myUARTCommand.string[0], "2")) {
-		if (IqRefRef < 1000) {
-			IqRefRef += 10;
-			if (IqRefRef > 0) {
-				IdRefRef = IqRefRef;
-			}
-			else {
-				IdRefRef = -IqRefRef;
-			}
-		}
-	}
-	else if (!strcmp((const char*)&myUARTCommand.string[0], "1")) {
-		if (IqRefRef > -1000) {
-			IqRefRef -= 10;
-			if (IqRefRef > 0) {
-				IdRefRef = IqRefRef;
-			}
-			else {
-				IdRefRef = -IqRefRef;
-			}
-		}
-	}
-	else if (!strcmp((const char*)&myUARTCommand.string[0], "0")) {
-//		faultBits |= 16384;
-		IdRefRef = 0;
-		IqRefRef = 0;
-	}
-
-	else {
-		TransmitString("Bad command or file name.  PC load letter.  That should fix it.\r\n");
-	}
-
-	myUARTCommand.string[0] = 0; 	// clear the string.
-	myUARTCommand.i = 0;
-	myUARTCommand.number = 0;
-	myUARTCommand.complete = 0;  // You processed that command.  Dump it!  Do this last.  The ISR will only run through if the command is NOT yet complete (in other words, if complete == 0). 
+	
+		myUARTCommand.string[0] = 0; 	// clear the string.
+		myUARTCommand.i = 0;
+		myUARTCommand.number = 0;
+		myUARTCommand.complete = 0;  // You processed that command.  Dump it!  Do this last.  The ISR will only run through if the command is NOT yet complete (in other words, if complete == 0). 
 	}
 }
 
 void ShowConfig(unsigned int mask) {
 	// 0         1         2         3         4         5
 	// 012345678901234567890123456789012345678901234567890123456789
-	// p=xxxxx i=xxxxx\r\n
+	// kp=xxxxx ki=xxxxx\r\n
 	if (mask & ((unsigned)1 << 0)) {
-		strcpy(showConfigString,"p=xxxxx i=xxxxx\r\n");
-		u16_to_str(&showConfigString[2], savedValues.Kp_Iq, 5);	
-		u16_to_str(&showConfigString[10], savedValues.Ki_Iq, 5);
+		strcpy(showConfigString,"kp=xxxxx ki=xxxxx\r\n");
+		u16_to_str(&showConfigString[3], savedValues.Kp, 5);	
+		u16_to_str(&showConfigString[12], savedValues.Ki, 5);
 		TransmitString(showConfigString);
 	}
 	// 0         1         2         3         4         5
@@ -447,7 +750,7 @@ void ShowConfig(unsigned int mask) {
 	//
 	if (mask & ((unsigned)1 << 8)) {
 		strcpy(showConfigString,"rotor-time-constant=xxx ms\r\n");
-		u16_to_str(&showConfigString[20], savedValues2.rotorTimeConstantArrayIndex+5, 3);  // for display purposes, add 5 so it's millisec.
+		u16_to_str(&showConfigString[20], savedValues2.rotorTimeConstantIndex+5, 3);  // for display purposes, add 5 so it's millisec.
 		TransmitString(showConfigString);
 	}
 	// 0         1         2         3         4         5
@@ -529,7 +832,7 @@ void ShowConfig(unsigned int mask) {
 	//
 	if (mask & ((unsigned)1 << 8)) {
 		strcpy(showConfigString,"pi-ratio=xxx\r\n");
-		u16_to_str(&showConfigString[9], piRatio, 3);  // ADCBUF1 is the raw throttle.
+		u16_to_str(&showConfigString[9], myPI.ratioKpKi, 3);  // ADCBUF1 is the raw throttle.
 		TransmitString(showConfigString);
 	}
 
@@ -634,4 +937,214 @@ int TransmitString(const char* str) {  // For echoing onto the display
 			ClrWdt();
 		#endif
 	}
+}
+
+void StreamData() {
+	static volatile int tenths = 0;
+	static volatile int temp;
+	//	unsigned int dataToDisplaySet1;
+	// 0b0000 0000 0000 0000
+	// bit 15 set: display myDataStream.timer
+	// Bit 14 set: display myDataStream.Id_times10
+	// bit 13 set: display myDataStream.Iq_times10
+	// Bit 12 set: display myDataStream.IdRef_times10
+	// bit 11 set: display myDataStream.IqRef_times10
+	// Bit 10 set: display myDataStream.Vd
+	// bit 9 set: display myDataStream.Vq
+	// Bit 8 set: display myDataStream.Ia_times10
+	// bit 7 set: display myDataStream.Ib_times10
+	// bit 6 set: display myDataStream.Ic_times10
+	// Bit 5 set: display myDataStream.Va
+	// bit 4 set: display myDataStream.Vb
+	// bit 3 set: display myDataStream.Vc
+	// bit 2 set: display myDataStream.percentOfVoltageDiskBeingUsed
+	// bit 1 set: display myDataStream.batteryAmps_times10
+	// bit 0 set: future use
+	//	unsigned int dataToDisplaySet2;
+	// Bit 15 set: display myDataStream.rawThrottle
+	// bit 14 set: display myDataStream.throttle
+	// Bit 13 set: display myDataStream.temperature
+	// bit 12 set: display myDataStream.slipSpeedRPM
+	// Bit 11 set: display myDataStream.electricalSpeedRPM
+	// bit 10 set: display myDataStream.mechanicalSpeedRPM
+	// Bit 9-0 set: future use. 
+
+	if (savedValues2.dataToDisplaySet1 & 32768) {
+		u16_to_str((char *)&intString[0], myDataStream.timer, 5); // intString[] = "00345".  Now, add a comma and null terminate it.
+		intString[5] = ',';
+		intString[6] = 0;	
+		TransmitString((char *)&intString[0]);
+	}
+	if (savedValues2.dataToDisplaySet1 & 16384) {
+		temp = abs(myDataStream.Id_times10);
+		tenths = temp % 10;
+		myDataStream.Id_times10 /= 10;
+		int16_to_str((char *)&intString[0], myDataStream.Id_times10, 3);	 // ex: intString[] = "+087"
+		intString[4] = '.';
+		intString[5] = (char)(tenths + 48);
+		intString[6] = ',';
+		intString[7] = 0; // null terminate it.					
+		TransmitString((char *)&intString[0]);
+	}
+	if (savedValues2.dataToDisplaySet1 & 8192) {
+		temp = abs(myDataStream.Iq_times10);
+		tenths = temp % 10;
+		myDataStream.Iq_times10 /= 10;
+		int16_to_str((char *)&intString[0], myDataStream.Iq_times10, 3);	 // ex: intString[] = "+087"
+		intString[4] = '.';
+		intString[5] = (char)(tenths + 48);
+		intString[6] = ',';
+		intString[7] = 0; // null terminate it.					
+		TransmitString((char *)&intString[0]);
+	}
+	if (savedValues2.dataToDisplaySet1 & 4096) {
+		temp = abs(myDataStream.IdRef_times10);
+		tenths = temp % 10;
+		myDataStream.IdRef_times10 /= 10;
+		int16_to_str((char *)&intString[0], myDataStream.IdRef_times10, 3);	 // ex: intString[] = "+087"
+		intString[4] = '.';
+		intString[5] = (char)(tenths + 48);
+		intString[6] = ',';
+		intString[7] = 0; // null terminate it.					
+		TransmitString((char *)&intString[0]);
+	}
+	if (savedValues2.dataToDisplaySet1 & 2048) {
+		temp = abs(myDataStream.IqRef_times10);
+		tenths = temp % 10;
+		myDataStream.IqRef_times10 /= 10;
+		int16_to_str((char *)&intString[0], myDataStream.IqRef_times10, 3);	 // ex: intString[] = "+087"
+		intString[4] = '.';
+		intString[5] = (char)(tenths + 48);
+		intString[6] = ',';
+		intString[7] = 0; // null terminate it.					
+		TransmitString((char *)&intString[0]);
+	}
+	if (savedValues2.dataToDisplaySet1 & 1024) {
+		int16_to_str((char *)&intString[0], myDataStream.Vd, 3);	 // ex: intString[] = "+087"
+		intString[4] = ','; // it is on 4 rather than 3 because there is a + or - as the first character of the string, since it's an int.
+		intString[5] = 0; // null terminate it.					
+		TransmitString((char *)&intString[0]);
+	}
+	if (savedValues2.dataToDisplaySet1 & 512) {
+		int16_to_str((char *)&intString[0], myDataStream.Vq, 3);	 // ex: intString[] = "+087"
+		intString[4] = ','; // it is on 4 rather than 3 because there is a + or - as the first character of the string, since it's an int.
+		intString[5] = 0; // null terminate it.					
+		TransmitString((char *)&intString[0]);
+	}
+	if (savedValues2.dataToDisplaySet1 & 256) {
+		temp = abs(myDataStream.Ia_times10);
+		tenths = temp % 10;
+		myDataStream.Ia_times10 /= 10;
+		int16_to_str((char *)&intString[0], myDataStream.Ia_times10, 3);	 // ex: intString[] = "+087"
+		intString[4] = '.';
+		intString[5] = (char)(tenths + 48);
+		intString[6] = ',';
+		intString[7] = 0; // null terminate it.					
+		TransmitString((char *)&intString[0]);
+	}
+	if (savedValues2.dataToDisplaySet1 & 128) {
+		temp = abs(myDataStream.Ib_times10);
+		tenths = temp % 10;
+		myDataStream.Ib_times10 /= 10;
+		int16_to_str((char *)&intString[0], myDataStream.Ib_times10, 3);	 // ex: intString[] = "+087"
+		intString[4] = '.';
+		intString[5] = (char)(tenths + 48);
+		intString[6] = ',';
+		intString[7] = 0; // null terminate it.					
+		TransmitString((char *)&intString[0]);
+	}
+	if (savedValues2.dataToDisplaySet1 & 64) {
+		temp = abs(myDataStream.Ic_times10);
+		tenths = temp % 10;
+		myDataStream.Ic_times10 /= 10;
+		int16_to_str((char *)&intString[0], myDataStream.Ic_times10, 3);	 // ex: intString[] = "+087"
+		intString[4] = '.';
+		intString[5] = (char)(tenths + 48);
+		intString[6] = ',';
+		intString[7] = 0; // null terminate it.					
+		TransmitString((char *)&intString[0]);
+	}
+	if (savedValues2.dataToDisplaySet1 & 32) {
+		int16_to_str((char *)&intString[0], myDataStream.Va, 3);	 // ex: intString[] = "+087"
+		intString[4] = ','; // it is on 4 rather than 3 because there is a + or - as the first character of the string, since it's an int.
+		intString[5] = 0; // null terminate it.					
+		TransmitString((char *)&intString[0]);
+	}
+	if (savedValues2.dataToDisplaySet1 & 16) {
+		int16_to_str((char *)&intString[0], myDataStream.Vb, 3);	 // ex: intString[] = "+087"
+		intString[4] = ','; // it is on 4 rather than 3 because there is a + or - as the first character of the string, since it's an int.
+		intString[5] = 0; // null terminate it.					
+		TransmitString((char *)&intString[0]);
+	}
+	if (savedValues2.dataToDisplaySet1 & 8) {
+		int16_to_str((char *)&intString[0], myDataStream.Vc, 3);	 // ex: intString[] = "+087"
+		intString[4] = ','; // it is on 4 rather than 3 because there is a + or - as the first character of the string, since it's an int.
+		intString[5] = 0; // null terminate it.					
+		TransmitString((char *)&intString[0]);
+	}
+	if (savedValues2.dataToDisplaySet1 & 4) {
+		u16_to_str((char *)&intString[0], myDataStream.percentOfVoltageDiskBeingUsed, 3); // intString[] = "075".  Now, add a comma and null terminate it.
+		intString[3] = ',';
+		intString[4] = 0;	
+		TransmitString((char *)&intString[0]);
+
+	}
+	if (savedValues2.dataToDisplaySet1 & 2) {
+		temp = abs(myDataStream.batteryAmps_times10);
+		tenths = temp % 10;
+		myDataStream.batteryAmps_times10 /= 10;
+		int16_to_str((char *)&intString[0], myDataStream.batteryAmps_times10, 3);	 // ex: intString[] = "+087"
+		intString[4] = '.';
+		intString[5] = (char)(tenths + 48);
+		intString[6] = ',';
+		intString[7] = 0; // null terminate it.					
+		TransmitString((char *)&intString[0]);
+	}
+	//if (savedValues2.dataToDisplaySet1 & 1) {
+	//}
+	// Bit 15 set: display myDataStream.rawThrottle
+	// bit 14 set: display myDataStream.throttle
+	// Bit 13 set: display myDataStream.temperature
+	// bit 12 set: display myDataStream.slipSpeedRPM
+	// Bit 11 set: display myDataStream.electricalSpeedRPM
+	// bit 10 set: display myDataStream.mechanicalSpeedRPM
+	// Bit  9-0 set: future use. 
+
+	if (savedValues2.dataToDisplaySet2 & 32768) {
+		u16_to_str((char *)&intString[0], myDataStream.rawThrottle, 4); // intString[] = "0345".  Now, add a comma and null terminate it.
+		intString[4] = ',';
+		intString[5] = 0;	
+		TransmitString((char *)&intString[0]);
+	}
+	if (savedValues2.dataToDisplaySet2 & 16384) {
+		int16_to_str((char *)&intString[0], myDataStream.throttle, 4); // intString[] = "+0345".  Now, add a comma and null terminate it.
+		intString[5] = ',';
+		intString[6] = 0;	
+		TransmitString((char *)&intString[0]);
+	}
+	if (savedValues2.dataToDisplaySet2 & 8192) {
+		u16_to_str((char *)&intString[0], myDataStream.temperature, 3); // intString[] = "38".  Now, add a comma and null terminate it.
+		intString[3] = ',';
+		intString[4] = 0;	
+		TransmitString((char *)&intString[0]);
+	}
+	if (savedValues2.dataToDisplaySet2 & 4096) {
+		int16_to_str((char *)&intString[0], myDataStream.slipSpeedRPM, 4); // intString[] = "+0345".  Now, add a comma and null terminate it.
+		intString[5] = ',';
+		intString[6] = 0;	
+		TransmitString((char *)&intString[0]);
+	}
+	if (savedValues2.dataToDisplaySet2 & 2048) {
+		int16_to_str((char *)&intString[0], myDataStream.electricalSpeedRPM, 5); // intString[] = "+03457".  Now, add a comma and null terminate it.
+		intString[6] = ',';
+		intString[7] = 0;	
+		TransmitString((char *)&intString[0]);
+	}
+	if (savedValues2.dataToDisplaySet2 & 1024) {
+		int16_to_str((char *)&intString[0], myDataStream.mechanicalSpeedRPM, 5); // intString[] = "+03457".  Now, add a comma and null terminate it.
+		intString[6] = ',';
+		intString[7] = 0;	
+		TransmitString((char *)&intString[0]);
+	}
+	TransmitString("\r\n");
 }
