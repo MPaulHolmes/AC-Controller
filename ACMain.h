@@ -4,7 +4,7 @@
 #include "UART.h"
 #include <libpic30.h>
 
-#define PAULS_MOTOR
+//#define PAULS_MOTOR
 
 #define I_TRIS_THROTTLE 		_TRISB0
 #define I_TRIS_CURRENT1			_TRISB1
@@ -121,6 +121,10 @@
 
 #define MAX_CURRENT_SENSOR_AMPS_PER_VOLT 480  // LEM Hass 300-s is 480.  Hass 50-s is 80.  Hass 600-s is 960.
 #define MAX_ROTOR_TIME_CONSTANT_INDEX 145u // valid indices are 0 to 145 inclusive.
+#define NO_FINE_ROTOR_INDUCTANCE 0
+#define FINE_ROTOR_INDUCTANCE 1
+#define SENSORLESS 1
+#define NO_SENSORLESS 0
 #ifdef PAULS_MOTOR
 	#define DEFAULT_CURRENT_SENSOR_AMPS_PER_VOLT 27 //480 //16 // default is the LEM Hass 50-s with 5 wraps at the moment.
 	#define MAX_MOTOR_AMPS 20
@@ -130,52 +134,46 @@
 	#define DEFAULT_KP 14000
 	#define DEFAULT_KI 225
 	#define DEFAULT_PRECHARGE_TIME 5
-	#define DEFAULT_ROTOR_TIME_CONSTANT_ARRAY_INDEX 29
+	#define DEFAULT_ROTOR_TIME_CONSTANT_INDEX 29
 	#define DEFAULT_STATOR_RESISTANCE_TIMES1024 1024 // my stator resistance (per coil) is 1 Ohm.
 	#define DEFAULT_STATOR_INDUCTANCE_TIMES1024 30 // 300mH default??  units are Henries.
 	#define DEFAULT_PACK_VOLTAGE 124
 	#define DEFAULT_MAX_RPS_TIMES16 1600
 	#define DEFAULT_ROTOR_INDUCTANCE_TIMES1024 30	// 30mH
+	#define DEFAULT_NUM_POLE_PAIRS 2
+	#define DEFAULT_MAX_MECHANICAL_RPM 6000
+	#define DEFAULT_THROTTLE_TYPE 0 // 0 means either hall effect or MAX Ohms to 0 Ohm for zero throttle to max throttle.
+	#define DEFAULT_DATA_TO_DISPLAY_SET1 0b0000000000000000
+	#define DEFAULT_DATA_TO_DISPLAY_SET2 0b0000000000000000
 #else 
 	#define DEFAULT_CURRENT_SENSOR_AMPS_PER_VOLT 480//27 //480 //16 // default is the LEM Hass 50-s with 5 wraps at the moment.
-	#define MAX_MOTOR_AMPS 400
-	#define MAX_BATTERY_AMPS_REGEN 400
-	#define MAX_BATTERY_AMPS 400
+	#define MAX_MOTOR_AMPS 200
+	#define MAX_BATTERY_AMPS_REGEN 200
+	#define MAX_BATTERY_AMPS 200
 	#define DEFAULT_ENCODER_TICKS 1000
 	#define DEFAULT_KP 4000
 	#define DEFAULT_KI 64
 	#define DEFAULT_PRECHARGE_TIME 50
-	#define DEFAULT_ROTOR_TIME_CONSTANT_ARRAY_INDEX 13
+	#define DEFAULT_ROTOR_TIME_CONSTANT_INDEX 13
 	#define DEFAULT_STATOR_RESISTANCE_TIMES1024 1024 // my stator resistance (per coil) is 1 Ohm.
 	#define DEFAULT_STATOR_INDUCTANCE_TIMES1024 30 // 300mH default??  units are Henries.
 	#define DEFAULT_PACK_VOLTAGE 124
 	#define DEFAULT_MAX_RPS_TIMES16 1600
-	#define DEFAULT_ROTOR_INDUCTANCE 30	// 30mH
+	#define DEFAULT_ROTOR_INDUCTANCE_TIMES1024 30	// 30mH
+	#define DEFAULT_NUM_POLE_PAIRS 2
+	#define DEFAULT_MAX_MECHANICAL_RPM 6000
+	#define DEFAULT_THROTTLE_TYPE 0 // 0 means either hall effect or MAX Ohms to 0 Ohm for zero throttle to max throttle.
+	#define DEFAULT_DATA_TO_DISPLAY_SET1 0b0000000000000000
+	#define DEFAULT_DATA_TO_DISPLAY_SET2 0b0000000000000000
 #endif
 
-#define PI_ARRAY_SIZE 401
-#define MAX_PI_ITERATIONS 401
-#define MAX_PI_P 20000
-#define PI_GOOD_VALUES_ARRAY_SIZE 450
 #define ROTOR_TIME_CONSTANT_ARRAY_SIZE 50
 #define MAX_ROTOR_INDUCTANCE 300
 #define MIN_ROTOR_INDUCTANCE 10
 
-#define TOP_HALF_SINE_WAVE 0
-#define BOTTOM_HALF_SINE_WAVE 1
-
-#define TOP_LEFT_QUARTER_SINE_WAVE 0
-#define TOP_RIGHT_QUARTER_SINE_WAVE 1
-#define BOTTOM_LEFT_QUARTER_SINE_WAVE 3
-#define BOTTOM_RIGHT_QUARTER_SINE_WAVE 4
-
-#define NUMBER_OF_DATA_TYPES 2
-
 typedef struct {
-	int Kp_Id;						// PI loop proportional gain
-	int Ki_Id;						// PI loop integreal gain
-	int Kp_Iq;						
-	int Ki_Iq;
+	int Kp;						// PI loop proportional gain
+	int Ki;						// PI loop integreal gain
 	int currentSensorAmpsPerVolt;					
 	int maxRegenPosition;			//
 	int minRegenPosition;			//
@@ -187,11 +185,12 @@ typedef struct {
 	int maxMotorAmps;
 	int maxMotorAmpsRegen;
 	int prechargeTime;				// precharge time in 0.1 second increments
+	int spares[2];
 	unsigned crc;					
 } SavedValuesStruct;
 
 typedef struct {
-	int rotorTimeConstantArrayIndex;  	// 31 and 32 is the best for my motor. 0 corresponds to rotor time constant of 0.005 seconds.  145 corresponds to 0.150 seconds.
+	int rotorTimeConstantIndex;  	// 31 and 32 is the best for my motor. 0 corresponds to rotor time constant of 0.005 seconds.  145 corresponds to 0.150 seconds.
 	int numberOfPolePairs;			// number of pole pairs.  If the nameplate says around 1700RPM on a 60Hz 3 phase, then it's 2 pole pairs.  3400RPM (or so) means 1 pole pair.
 	int maxRPM;
 	int throttleType;				// 0 = hall effect or "Max Ohms to Min Ohms" if using Pot.  1 = MIN OHMS to MAX OHMS.
@@ -199,45 +198,71 @@ typedef struct {
 	int statorResistance_times1024;
 	int statorInductance_times1024;
 	int packVoltage;
-//	int rotorInductance_times1024;
-//	int useFineRotorInductance;  // this is if the inductance is really small, like 1mH, and you need more resolution.
+	int rotorInductance_times1024;
+	int useFineRotorInductance;  // this is if the inductance is really small, like 1mH, and you need more resolution.
 	int sensorless;
-	int spares[6];
+	unsigned int dataToDisplaySet1;
+	// 0b0000 0000 0000 0000
+	// bit 15 set: display counter1ms
+	// Bit 14 set: display Id
+	// bit 13 set: display Iq
+	// Bit 12 set: display IdRef
+	// bit 11 set: display IqRef
+	// Bit 10 set: display Vd
+	// bit 9 set: display Vq
+	// Bit 8 set: display Ia
+	// bit 7 set: display Ib
+	// bit 6 set: display Ic
+	// Bit 5 set: display Va
+	// bit 4 set: display Vb
+	// bit 3 set: display Vc
+	// bit 2 set: display % of voltage being used.  Ratio of radius of <Vd,Vq> to total voltage.
+	// bit 1-0 set: future use
+
+	unsigned int dataToDisplaySet2;
+	// Bit 15 set: display rawThrottle
+	// bit 14 set: display normalizedThrottle
+	// Bit 13 set: display temperature
+	// bit 12 set: display slipSpeedRPM
+	// Bit 11 set: display electricalSpeedRPM
+	// bit 10 set: display mechanicalSpeedRPM
+	// Bit  9 set: display batteryCurrent
+	// Bit  8-0 set: future use. 
+
+	int spares[2];
 	unsigned crc;
 } SavedValuesStruct2;
 
+//volatile int piZeroCrossingIndex = -1;
+//volatile int piIterationIndex = 0;
 typedef struct {
-	int throttle;
-	unsigned temperatureBasePlate;
-	unsigned temperatureMotor;
-	int IqRef;
-	int IdRef;
-	int Id;
-	int Iq;
-	unsigned pdc1;
-	unsigned pdc2;
-	unsigned pdc3;
-	int RPS_times16;
-	unsigned batteryCurrentNormalized; 
-	unsigned faultBits;  
-} realtime_data_type;
-
-typedef struct {
-	long P;
-	long I;
-	long error;
-	long errorSum;
-	long pwm;
+	long Kp;
+	long Ki;
+	long error_d;
+	long errorSum_d;
+	long pwm_d;
+	long error_q;
+	long errorSum_q;
+	long pwm_q;
+	int testFinished;
+	int testFailed;
+	int testRunning;
+	int ratioKpKi;
+	int zeroCrossingIndex; // initialize to -1.
+	int iteration; // how many times have you run the PI loop with the same Kp and Ki?  This is used in the PI auto loop tuning.
+	int maxIterationsBeforeZeroCrossing; // the default is 20.  The PI loop test converges in like 12 iterations on my tests.
+	int previousTestCompletionTime;
+	int clampErrorVd;
+	int clampErrorVq;
 } piType;
 
-typedef union {
-	int PI_data[PI_GOOD_VALUES_ARRAY_SIZE];
-	int rotor_data[ROTOR_TIME_CONSTANT_ARRAY_SIZE];
-	int data[NUMBER_OF_DATA_TYPES][PI_GOOD_VALUES_ARRAY_SIZE/NUMBER_OF_DATA_TYPES];
-//	int data2[PI_GOOD_VALUES_ARRAY_SIZE/2];
-
-} largeStorageType;
-
-#define DEBUG
+typedef struct {
+	unsigned int startTime;
+	int maxTestSpeed;
+	int bestTimeConstantIndex;
+	int timeConstantIndex;
+	int testRunning;
+	int testFinished;
+} rotorType;
 
 #endif
