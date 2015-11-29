@@ -18,20 +18,20 @@ _FGS(CODE_PROT_OFF);
 
 // 4688, 75
 const SavedValuesStruct savedValuesDefault = {
-	DEFAULT_KP,DEFAULT_KI,DEFAULT_KP,DEFAULT_KI,DEFAULT_CURRENT_SENSOR_AMPS_PER_VOLT,25,400,624,972,5,MAX_BATTERY_AMPS,MAX_BATTERY_AMPS_REGEN,MAX_MOTOR_AMPS,MAX_MOTOR_AMPS,DEFAULT_PRECHARGE_TIME,0
+	DEFAULT_KP,DEFAULT_KI,DEFAULT_CURRENT_SENSOR_AMPS_PER_VOLT,25,400,624,972,5,MAX_BATTERY_AMPS,MAX_BATTERY_AMPS_REGEN,MAX_MOTOR_AMPS,MAX_MOTOR_AMPS,DEFAULT_PRECHARGE_TIME,{0,0},0
 };
 
 volatile SavedValuesStruct savedValues = {
-	DEFAULT_KP,DEFAULT_KI,DEFAULT_KP,DEFAULT_KI,DEFAULT_CURRENT_SENSOR_AMPS_PER_VOLT,25,400,624,972,5,MAX_BATTERY_AMPS,MAX_BATTERY_AMPS_REGEN,MAX_MOTOR_AMPS,MAX_MOTOR_AMPS,DEFAULT_PRECHARGE_TIME,0
+	DEFAULT_KP,DEFAULT_KI,DEFAULT_CURRENT_SENSOR_AMPS_PER_VOLT,25,400,624,972,5,MAX_BATTERY_AMPS,MAX_BATTERY_AMPS_REGEN,MAX_MOTOR_AMPS,MAX_MOTOR_AMPS,DEFAULT_PRECHARGE_TIME,{0,0},0
 };
 
 const SavedValuesStruct2 savedValuesDefault2 = {
-	DEFAULT_ROTOR_TIME_CONSTANT_ARRAY_INDEX,2,6000,0, DEFAULT_ENCODER_TICKS,DEFAULT_STATOR_RESISTANCE_TIMES1024,DEFAULT_STATOR_INDUCTANCE_TIMES1024,DEFAULT_PACK_VOLTAGE,1,{0,0,0,0,0,0}, 0
+	DEFAULT_ROTOR_TIME_CONSTANT_INDEX,DEFAULT_NUM_POLE_PAIRS,DEFAULT_MAX_MECHANICAL_RPM,DEFAULT_THROTTLE_TYPE, DEFAULT_ENCODER_TICKS,DEFAULT_STATOR_RESISTANCE_TIMES1024,DEFAULT_STATOR_INDUCTANCE_TIMES1024,DEFAULT_PACK_VOLTAGE,DEFAULT_ROTOR_INDUCTANCE_TIMES1024,NO_FINE_ROTOR_INDUCTANCE,NO_SENSORLESS,DEFAULT_DATA_TO_DISPLAY_SET1, DEFAULT_DATA_TO_DISPLAY_SET2,{0,0}, 0
 };
 volatile SavedValuesStruct2 savedValues2 = {
-	DEFAULT_ROTOR_TIME_CONSTANT_ARRAY_INDEX,2,6000,0, DEFAULT_ENCODER_TICKS,DEFAULT_STATOR_RESISTANCE_TIMES1024,DEFAULT_STATOR_INDUCTANCE_TIMES1024,DEFAULT_PACK_VOLTAGE,1,{0,0,0,0,0,0}, 0
+	DEFAULT_ROTOR_TIME_CONSTANT_INDEX,DEFAULT_NUM_POLE_PAIRS,DEFAULT_MAX_MECHANICAL_RPM,DEFAULT_THROTTLE_TYPE, DEFAULT_ENCODER_TICKS,DEFAULT_STATOR_RESISTANCE_TIMES1024,DEFAULT_STATOR_INDUCTANCE_TIMES1024,DEFAULT_PACK_VOLTAGE,DEFAULT_ROTOR_INDUCTANCE_TIMES1024,NO_FINE_ROTOR_INDUCTANCE,NO_SENSORLESS,DEFAULT_DATA_TO_DISPLAY_SET1, DEFAULT_DATA_TO_DISPLAY_SET2,{0,0}, 0
 };
-unsigned int revCounterMax = 160000L/(4*DEFAULT_ENCODER_TICKS);  // revCounterMax = 16000000L / (4*savedValues2.encoderTicks);  // 4* because I'm doing 4 times resolution for the encoder. 16,000,000 because revolutions per 16 seconds is computed as:  16*10,000*poscnt * rev/(maxPosCnt*revcounter*(16sec))
+unsigned int revCounterMax = 160000L/(4*DEFAULT_ENCODER_TICKS);  // revCounterMax = 160000L / (4*savedValues2.encoderTicks);  // 4* because I'm doing 4 times resolution for the encoder. 16,000,000 because revolutions per 16 seconds is computed as:  16*10,000*poscnt * rev/(maxPosCnt*revcounter*(16sec))
 
 // This is always a copy of the data that's in the EE PROM.
 // To change EE Prom, modify this, and then copy it to EE Prom.
@@ -45,6 +45,12 @@ _prog_addressT EE_addr1 = 0x7ffc00;
 _prog_addressT EE_addr2 = 0x7ffc20;
 _prog_addressT EE_addr3 = 0x7ffc40;
 _prog_addressT EE_addr4 = 0x7ffc60;
+
+// celciusToResistance[0] is the resistance in Ohms that corresponds to 0 degrees celcius.  celciusToResistance[59] is the resistance in Ohms that corresponds to 59 degrees celcius.
+// the range is 0 celcius to 126 degrees celcius.
+//									0, 		1,	2,		3,	4,		5,	6,		7,	8,		9,	10,		11,	12,		13,	14,		15,	16,		17,	18,		19,	20,		21,	22,		23,	24,		25,	26,	27,	  28,	29, 30,  31,   32,  33,  34,  35,  36,  37,  38,  39,  40,  41,  42,  43,  44,  45,  46,  47,  48,  49,  50,  51,  52,  53,  54,  55,  56,  57,  58,  59,  60,  61,  62,  63,  64,  65,  66,  67,  68,  69,  70,
+const int celciusToResistance[] = {32624,31175,29727,28278,26830,25381,24284,23187,22091,20994,19897,19060,18223,17385,16548,15711,15067,14424,13780,13137,12493,11994,11496,10997,10499,10000,9611,9222,8834,8445,8056,7751,7445,7140,6835,6530,6289,6047,5806,5565,5324,5132,4940,4749,4557,4365,4212,4059,3905,3752,3599,3475,3352,3229,3106,2982,2883,2783,2683,2584,2484,2403,2322,2241,2160,2079,2013,1946,1880,1814,1748,1693,1639,1585,1530,1476,1431,1386,1341,1297,1252,1215,1178,1140,1103,1066,1035,1004,973,942,912,886,860,834,808,782,761,739,717,696,674,656,638,619,601,583,567,552,537,521,506,493,479,466,453,440,429,418,407,396,384,375,365,356,346,337,327,
+};
 
 // = loopPeriod / rotorTimeConstant * 2^18.  loopPeriod is 0.0001 seconds, because it's being run at 10KHz. Rotor time constants range from 0.005 to 0.150 seconds.
 // After using an element from this array, you must eventually divide the result by 2^18!!!
@@ -111,198 +117,37 @@ const int _sin_times32768[] =
 -4410,	-4011,	-3612,	-3212,	-2811,	-2410,	-2009,	-1608,	-1206,	-804,	-402, 		0,		0,		0,		0,		0,		0,		0,		0,};
 ////////////////////////////////////////////////////////////////
 
-extern char string[];
 
-//volatile int dataDumping = 0;
-
-volatile int largeArrayLoaded = 0;
-volatile int captureVariable = 0;
-volatile int dataCounter = 0;
-
+volatile rotorType myRotor = {0,0,0,DEFAULT_ROTOR_TIME_CONSTANT_INDEX,0,0};
+volatile piType myPI;
 
 // in void ComputeRotorFluxAngle() {
-volatile unsigned int rotorFluxAngle_times128 = 0;  // For fine control.
 volatile int rotorFluxRPS_times16 = 0;
-volatile int rotorFluxRPS_times16_sensorless = 0;
 
-volatile int angleChange_times128 = 0;
-volatile int angleChange_times128_sensorless = 0;
-volatile unsigned int oldRotorFluxAngle = 1;
 volatile unsigned int rotorFluxAngle = 1; 		// This is the rotor flux angle. In [0, 511]
-
 volatile int RPS_times16 = 0; // range [-3200, 3200], where 3200 corresponds to 200rev/sec = 12,000RPM, and 0 means 0RPM.
-volatile int RPS_times16_sensorless = 0;
 volatile int currentSensorAmpsPerVoltTimes5 = DEFAULT_CURRENT_SENSOR_AMPS_PER_VOLT*5;
 
 
 volatile int maxRPS_times16 = DEFAULT_MAX_RPS_TIMES16; // 3200 CORRESPONDS TO 12000RPM.
-volatile int oldRPS = 0;	// previous RPS_times16.
-volatile int veryOldRPS = 0; // previous oldRPS.
-
-// ComputeRotorFluxSpeedSensorless();
-/*
-volatile int v_alpha_volts_times8 = 0;
-volatile int v_beta_volts_times8 = 0;
-volatile int di_alpha_dt_times8 = 0;
-volatile int di_beta_dt_times8 = 0;
-
-
-volatile int i_alpha_amps_times8_old10 = 0;//i_alpha_amps_times8_old9;
-volatile int i_alpha_amps_times8_old9 = 0;//i_alpha_amps_times8_old8;
-volatile int i_alpha_amps_times8_old8 = 0;//i_alpha_amps_times8_old7;
-volatile int i_alpha_amps_times8_old7 = 0;//i_alpha_amps_times8_old6;
-volatile int i_alpha_amps_times8_old6 = 0;//i_alpha_amps_times8_old5;
-volatile int i_alpha_amps_times8_old5 = 0; // i_alpha_amps_times8_old4;
-volatile int i_alpha_amps_times8_old4 = 0; // i_alpha_amps_times8_old3;
-volatile int i_alpha_amps_times8_old3 = 0; // i_alpha_amps_times8_old2;
-volatile int i_alpha_amps_times8_old2 = 0; // i_alpha_amps_times8_old1;
-volatile int i_alpha_amps_times8_old1 = 0; // i_alpha_amps_times8;
-volatile int i_alpha_amps_times8 = 0; // __builtin_mulss((int)currentSensorAmpsPerVoltTimes5, (int)i_alpha) >> 11;
-
-volatile int temp = 0; // 0;
-
-volatile int i_beta_amps_times8_old10 = 0; // i_beta_amps_times8_old9;
-volatile int i_beta_amps_times8_old9 = 0; // i_beta_amps_times8_old8;
-volatile int i_beta_amps_times8_old8 = 0; // i_beta_amps_times8_old7;
-volatile int i_beta_amps_times8_old7 = 0; // i_beta_amps_times8_old6;
-volatile int i_beta_amps_times8_old6 = 0; // i_beta_amps_times8_old5;
-volatile int i_beta_amps_times8_old5 = 0; // i_beta_amps_times8_old4;
-volatile int i_beta_amps_times8_old4 = 0; // i_beta_amps_times8_old3;
-volatile int i_beta_amps_times8_old3 = 0; // i_beta_amps_times8_old2;
-volatile int i_beta_amps_times8_old2 = 0; // i_beta_amps_times8_old1;
-volatile int i_beta_amps_times8_old1 = 0; // i_beta_amps_times8;
-volatile int i_beta_amps_times8 = 0; // __builtin_mulss((int)currentSensorAmpsPerVoltTimes5, (int)i_beta) >> 11;
-
-
-
-volatile int BEMFAngleSensorless = 1;
-volatile int rotorFluxAngleSensorless = 1;
-volatile int oldRotorFluxAngleSensorless = 1; 		//
-
-volatile int positiveRotation = 0;
-
-volatile long Ed_times8_times65536 = 0L;
-volatile int Ed_times8_filtered = 0L;
-volatile long Eq_times8_times65536 = 0L;
-volatile int Eq_times8_filtered = 0L;
-
-volatile long tempLongAlpha = 0L;
-volatile long tempLongBeta = 0L;
-volatile long tempLongEdEq = 0L;
-
-volatile long temp1 = 0;
-volatile long temp2 = 0;
-volatile long temp3 = 0;
-volatile long temp4 = 0;
-
-volatile int magnitudeIAlpha_times8 = 0;
-volatile int magnitudeIBeta_times8 = 0;
-volatile int magnitudeVAlpha_times8 = 0;
-volatile int magnitudeVBeta_times8 = 0;
-volatile int E_alpha_times8 = 0;
-volatile int E_beta_times8 = 0;
-volatile int Ed_times8 = 0;
-volatile int Eq_times8 = 0;
-volatile int theta = 0;
-volatile int thetaPlus90 = 0;
-volatile int i_alpha_amps_times8_filtered = 0;
-volatile long i_alpha_amps_times8_filtered_times65536 = 0L;
-volatile int i_alpha_amps_times8_filtered_corrected = 0;
-volatile int i_beta_amps_times8_filtered = 0;
-volatile long i_beta_amps_times8_filtered_times65536 = 0L;
-volatile int i_beta_amps_times8_filtered_corrected = 0;
-volatile int v_alpha_volts_times8_filtered = 0;
-volatile long v_alpha_volts_times8_filtered_times65536 = 0L;
-
-volatile int v_alpha_volts_times8_filtered_corrected = 0;
-volatile int v_beta_volts_times8_filtered = 0;
-volatile long v_beta_volts_times8_filtered_times65536 = 0L;
-
-volatile int v_beta_volts_times8_filtered_corrected = 0;
-volatile long int di_alpha_dt_times8_filtered_corrected = 0;
-volatile long int di_beta_dt_times8_filtered_corrected = 0;
-volatile int periodIBeta_div_2 = 10000;  // just a guess for the startup period.
-volatile int periodIAlpha_div_2 = 10000;
-volatile int periodVBeta_div_2 = 10000;
-volatile int periodVAlpha_div_2 = 10000;
-volatile int localMaxCandidateIAlpha = 0;
-volatile int localMinCandidateIAlpha = 0;
-volatile int localMaxCandidateIBeta = 0;
-volatile int localMinCandidateIBeta = 0;
-volatile int localMaxCandidateVBeta = 0;
-volatile int localMinCandidateVBeta = 0;
-volatile int localMaxCandidateVAlpha = 0;
-volatile int localMinCandidateVAlpha = 0;
-volatile int tIAlpha = 0;
-volatile int tIBeta = 0;
-volatile int tVAlpha = 0;
-volatile int tVBeta = 0;
-volatile int shiftCorrection = 0;
-volatile int correctionIndex = 0;
-volatile char stateIAlpha = 0;
-volatile char stateIBeta = 0;
-volatile char stateVAlpha = 0;
-volatile char stateVBeta = 0;
-volatile int derivativeScale = 0;
-
-volatile int magnitudeCorrection_times1024 = 0;
-volatile int tempIAlpha = 0;
-volatile int tempIBeta = 0;
-volatile int tempVAlpha = 0;
-volatile int tempVBeta = 0;
-*/
-// END OF ComputeRotorFluxSpeedSensorless(); VARIABLES /////////////////////////////
 
 volatile unsigned int rGlobal = 0;
 volatile long rGlobal_filtered_times65536 = 0L;//   
 volatile int rGlobal_filtered = 0;//
 
-
-volatile long magCurrChange = 0;
-volatile long slipSpeedNumerator = 0;
 volatile int slipSpeedRPS_times16 = 0;
-volatile long magnetizingCurrentFine = 0;
-volatile int magnetizingCurrent = 0;
 volatile int magnetizingCurrentAmps_times8 = 0;
-volatile unsigned int elapsedTimeInterrupt = 0;
 
-//volatile unsigned int LrLmSquared_times128;  // Lr / Lm^2.  rotor inductance / (mutual inductance^2).  One data point:  Leeson Motor rotor inductance = 0.12117H.  Mutual Inductance = 0.11215.  Stator Inductance = 0.129930H
-									// Lm / Ls = 0.866.  Is that related to the motor efficiency?  I'm going to assume yes.  So, I"m going to use Lr / (sqrt(3)/2 * sqrt(3)/2 * Lr*Lr) = 4/3 * 1/Lr as a guess.  A correction for voltage, current, and radian units is required.
-
-	volatile long temp_filtered_times65536 = 0;
-	volatile int temp_filtered = 0;
-	volatile int minTemp = 32767;
-	volatile int maxTemp = 0;
-	volatile int minLs = 0;
-	volatile int maxLs = 0;
-	volatile int minLr = 0;
-	volatile int maxLr = 0;
-	volatile int minRs = 0;
-	volatile int maxRs = 0;
-
-volatile int piRatio = 62;
-volatile int piZeroCrossingIndex = -1;
-volatile int piGoodValuesIndex = 0;
-volatile int piGoodValuesArrayLoaded = 0;
-volatile int huntingForGoodPIValues = 0;
-volatile int piIterationIndex = 0;
-volatile int startNewRotorTest = 0;	
-volatile int rotorArrayLoaded = 0;
-
+volatile unsigned int counter1k = 0;
 volatile unsigned int counter10k = 0;
-volatile unsigned int period10k = 0;
-volatile unsigned int periodStart = 0;
-volatile unsigned int delayBetweenPITests = 0;
-volatile unsigned int rotorStartTime = 0;
 
-volatile largeStorageType largeStorage;
-volatile realtime_data_type RTData = {0,0,0,0,0,0,0,0,0,0,0,0,0};
-volatile unsigned int showDatastreamJustOnce = 0;
 volatile unsigned int faultBits = STARTUP_FAULT;
-volatile unsigned int oldFaultBits = 0;
-volatile int vRef1 = 512, vRef2 = 512;  // these are temporary values.  The real values will be computed later, but this is close, since zero current corresponds to 2.5v on the current sensor.
+volatile int vRef1 = 512, vRef2 = 512;  // these are temporary values for "zero current feedback".  The real values will be computed later, but this is close, since zero current corresponds to 2.5v on the current sensor.
+
 volatile long throttleSum = 0;
-volatile int throttle = 0;
+volatile int throttle = 0, rawThrottle = 0;
+volatile int throttleFaultCounter = 0;
+
 volatile int maxMotorCurrentNormalizedRegen = 0;
 volatile int maxMotorCurrentNormalized = 0;
 volatile int batteryCurrentNormalized = 0;
@@ -313,69 +158,42 @@ volatile int normalizedToAmpsMultiplier = 0;
 volatile long batteryCurrentSum = 0;
 
 volatile int temperatureMultiplier = 8;
-
-volatile int throttleCounter = 0;
-volatile int throttleFaultCounter = 0;
-volatile unsigned int datastreamPeriod = 0;  //  the real time data string will transmit every "dataStreamPeriod" milliseconds.
 volatile int temperatureBasePlate = 0;
-volatile long temperatureSum = 0;
-volatile unsigned int counter1ms = 0;
+
 volatile int ADCurrent1 = 0, ADCurrent2 = 0;
-volatile piType pi_Iq, pi_Id;
 
 // _ADInterrupt() variables
 volatile int i_alpha = 0;
 volatile int i_beta = 0;
 volatile int Id = 0;
 volatile int Iq = 0;
-volatile int Ia = 0, Ib_times2 = 0;
+volatile int Ia = 0, Ib = 0, Ic = 0, Ib_times2 = 0;
 volatile int Vd = 0, Vq = 0;
 volatile int v_alpha = 0;
 volatile int v_beta = 0;
-
-volatile int cos_theta_times32768 = 0;
-volatile int sin_theta_times32768 = 0;
-volatile unsigned int rotorFluxAnglePlus90 = 0;
-
 volatile int pdc1 = 0;
 volatile int pdc2 = 0;
 volatile int pdc3 = 0;
 volatile int averageDuty = 0;
-
-volatile int maxSpeed = 0;
-volatile int clampErrorVd = 0;
-volatile int clampErrorVdPOS = 0;
-volatile int clampErrorVq = 0;
-volatile int clampErrorVqPOS = 0;
 volatile int Va = 0, Vb = 0, Vc = 0;
 volatile int IdRef = 0;	// in the range [0, 4096]
 volatile int IdRefRef = 0;
-
 volatile int IqRefRef = 0;
 volatile int IqRef = 0; // in the range [-4096, 4096]
 
 extern int TransmitString(char* str);
-extern void u16x_to_str(char *str, unsigned val, unsigned char digits);
-extern void u16_to_str(char *str, unsigned val, unsigned char digits);
-extern void int16_to_str(char *str, int val, unsigned char digits);
 extern void ShowMenu(void);
 extern void ProcessCommand(void);
 extern void InitUART2(void);
+extern void StreamData(void);
+extern volatile dataStream myDataStream;
 
-void FetchRTData();
 void InitTimers();
 void InitIORegisters(void);
 void Delay(unsigned int);
 void DelayTenthsSecond(int time);
 void DelaySeconds(int time);
-void ReadADInputs();
-void GrabADResults();
 void InitADAndPWM();
-void InitDiscreteADConversions();
-void GetVRefs();
-void DelaySeconds(int seconds);
-void DecimalToString(int number, int length);
-char IntToCharHex(unsigned int i);
 void InitCNModule();
 void InitPIStruct();
 void ClearAllFaults();  // clear the flip flop fault and the desat fault.
@@ -386,8 +204,7 @@ void ComputeRotorFluxAngleSensorless();
 void SpaceVectorModulation();
 void ClampVdVq();
 void Delay1uS();
-int __arctan(int numerator, int denominator);
-
+void GrabDataSnapshot();
 
 void __attribute__((__interrupt__, auto_psv)) _CNInterrupt(void);
 void __attribute__ ((__interrupt__,auto_psv)) _ADCInterrupt(void);
@@ -396,28 +213,25 @@ void __attribute__ ((__interrupt__,auto_psv)) _StackError(void);
 void __attribute__ ((__interrupt__,auto_psv)) _AddressError(void);
 void __attribute__ ((__interrupt__,auto_psv)) _OscillatorFail(void);
 
-
 void MoveDataFromEEPromToRAM();
 void EESaveValues();
 void InitializeThrottleAndCurrentVariables();
 void MoveToNextPIValues();
 
 int main() {
-	int i = 0, j = 0;
+	int i = 0;
 	unsigned int now = 0;
 	long int vRef1Sum = 0;
 	long int vRef2Sum = 0;
 	int localCurrent1 = 0;
 	int localCurrent2 = 0;
-	int bestRotorIndex = 0;
-	int bestRotorSpeed = 0;
 	unsigned int notShownFaultYet = 0x0FFFF;	
 
 
 	InitIORegisters();
 	InitTimers();  // Now timer1 is running at around 59KHz.
-	DelayTenthsSecond(10); // delay 0.3 sec to let voltages settle.  The dang precharge relay just turned on, and may cause a sag in the +5v supply?
-	// make sure its' up to 5v first.
+	DelayTenthsSecond(5); 
+	// Let voltages settle.
 	O_LAT_PRECHARGE_RELAY = 1;  // turn on precharge relay.
 
 	MoveDataFromEEPromToRAM();
@@ -445,7 +259,7 @@ int main() {
 	}
 	DelayTenthsSecond(savedValues.prechargeTime + 1);  // Make sure at least 5 time constants for precharge time!!
 	O_LAT_CONTACTOR = 1;  // close main contactor.
-	DelayTenthsSecond(5);  // delete later??
+	DelayTenthsSecond(2);
 	O_LAT_PRECHARGE_RELAY = 0;  // open precharge relay once main contactor is closed.
 
 	ClearAllFaults();	// The flip flop and desaturation detection faults start up in an unknown state. clear them.
@@ -453,48 +267,49 @@ int main() {
 	ShowMenu(); 	// serial show menu.
 	while(1) {
 		ProcessCommand();  // If there's a command to be processed, this does it.  haha.
-		if (TMR2 >= 59) {  // TMR3:TMR2 is a 32 bit timer, running at 59KHz.  So, 59 ticks of TMR2 (the low 16 bits) is about 1ms.
-			TMR2 = 0;
-			counter1ms++;
+		// if myDataStream.period not zero display data stream at specified interval
+		if (TMR1 > 115) {
+			counter1k++;
+			TMR1 = 0;
 		}
-		if (largeArrayLoaded) {
-			largeArrayLoaded = 0;
-			captureVariable = 0;
-			dataCounter = 0;
-			for (j = 0; j < NUMBER_OF_DATA_TYPES; j++) {
-				for (i = 0; i < PI_GOOD_VALUES_ARRAY_SIZE/NUMBER_OF_DATA_TYPES; i++) {
-					int16_to_str(&string[0], (int)largeStorage.data[j][i], 5);
-					TransmitString(string);
+		if (myDataStream.period) {
+			if ((counter1k - myDataStream.timeOfLastTransmission) >= myDataStream.period) {
+				GrabDataSnapshot();
+				if (myDataStream.showStreamOnce) {
+					myDataStream.period = 0;  // Show it once and then stop the stream.
 				}
-				TransmitString("\r\n");
+				// myDataStream.period mS passed since last time, adjust myDataStream.timeOfLastTransmission to trigger again
+				myDataStream.timeOfLastTransmission = counter1k;
+				StreamData(); // 
 			}
-			TransmitString("rps times 16 = ");
-			int16_to_str(&string[0], (int)RPS_times16,5);// (int)((((long)rotorFluxRPS_times16) * 15L) >> 2), 5);
-			TransmitString(string);
 		}
-		if (piGoodValuesArrayLoaded) {
-			piGoodValuesArrayLoaded = 0;
-			for (i = 0; i < piGoodValuesIndex; i++) {
-				int16_to_str(&string[0], (int)largeStorage.PI_data[i], 5);
-				TransmitString(string);
-			}
-			if (piGoodValuesIndex == 0) {
+		if (myPI.testFinished) {
+			myPI.testFinished = 0;
+			if (myPI.testFailed) {
 				TransmitString("No values passed the test.\r\n");
+				TransmitString("Try the following:\r\n");
+				TransmitString("pi-ratio 63\r\n");
+				TransmitString("run-pi-test\r\n");
+				TransmitString("pi-ratio 64\r\n");
+				TransmitString("run-pi-test\r\n");
+				TransmitString("pi-ratio 65\r\n");
+				TransmitString("run-pi-test\r\n");
+				TransmitString("Just keep going.  If nothing passes the test after you have tried pi-ratio all the way to, say, 200,\r\n");
+				TransmitString("it may be that the PI test is too stringent for your motor.  Email me at paulandsabrinasevstuff@gmail.com.\r\n");
+			}
+			else {
+				TransmitString("The test was a success.  If you are staying with this bus voltage, type 'save':\r\n");				
+				TransmitString("If you change your bus voltage, you should rerun the command 'run-pi-test'.\r\n");
 			}
 		}
-		if (rotorArrayLoaded) {
-			rotorArrayLoaded = 0;
-			bestRotorIndex = 0;
-			bestRotorSpeed = 0;
-			for (i = 0; i < ROTOR_TIME_CONSTANT_ARRAY_SIZE; i++) {
-				if (bestRotorSpeed < largeStorage.rotor_data[i]) {
-					bestRotorIndex = i;
-				}
-				int16_to_str(&string[0], (int)((((long)largeStorage.rotor_data[i]) * 15L) >> 2), 5);
-				TransmitString(string);
+		if (myRotor.testFinished) {
+			if (myRotor.maxTestSpeed < 32) { // it should be WAY  faster than this.
+				TransmitString("Your rotor test failed.\r\n");				
 			}
-			savedValues2.rotorTimeConstantArrayIndex = bestRotorIndex;
-			// saveToEE()
+			else {
+				TransmitString("Your rotor test was a success!  Type 'config' to see the new rotor time constant.\r\n");
+				TransmitString("To save the newly found rotor time constant, type 'save'.\r\n");
+			}
 		}
 		if (I_PORT_GLOBAL_FAULT == 0) {
 			faultBits |= GLOBAL_FAULT;
@@ -576,46 +391,40 @@ int main() {
 //---------------------------------------------------------------------
 // This runs at 9.997kHz.
 void __attribute__ ((__interrupt__,auto_psv)) _ADCInterrupt(void) {
-//	static int startUp = 1;
-	static int tempVd = 0;
-	static int tempVq = 0;
-	static int temp = 0;
-	static int rampRate = 1;
-//	static int minClampErrorVd = 0;
-//	static int maxClampErrorVd = 0;
-//	static int minClampErrorVq = 0;
-//	static int maxClampErrorVq = 0;
-	static int newPeriodStarted = 0;
-	static int ratio_times1250 = 0;
-	static int periodOffset = 0;
-	static int periodOffsetStart = 0;
-	static unsigned int startTimeInterrupt = 0;
-	static long batteryCurrentLong = 0;
-	static long vBetaSqrt3_times32768 = 0;
-	static long v_alpha_times32768 = 0;
-	static int revCounter = 0;	// revCounter increments at 10kHz.  When it gets to 78, the number of ticks in POSCNT is extremely close to the revolutions per seoond * 16.
+	static volatile unsigned int rotorFluxAnglePlus90 = 0;
+	static volatile long temperatureSum = 0;
+	static volatile unsigned int elapsedTimeInterrupt = 0;
+	static volatile int throttleCounter = 0;
+	static volatile int cos_theta_times32768 = 0;
+	static volatile int sin_theta_times32768 = 0;
+	static volatile int tempVd = 0;
+	static volatile int tempVq = 0;
+	static volatile int temp = 0;
+	static volatile int rampRate = 1;
+	static volatile unsigned int startTimeInterrupt = 0;
+	static volatile long batteryCurrentLong = 0;
+	static volatile long vBetaSqrt3_times32768 = 0;
+	static volatile long v_alpha_times32768 = 0;
+	static volatile int revCounter = 0;	// revCounter increments at 10kHz.  When it gets to 78, the number of ticks in POSCNT is extremely close to the revolutions per seoond * 16.
 								// So, the motor mechanical speed will be computed every 1/128 seconds, and will have a range of [0, 3200], where 3200 corresponds to 12000rpm.	
 
 	startTimeInterrupt = TMR4;
 
     IFS0bits.ADIF = 0;  	// Interrupt Flag Status Register. Pg. 142 in F.R.M.
-
-	counter10k++;	
 	// ADIF = A/D Conversion Complete Interrupt Flag Status bit.  
 	// ADIF = 0 means we are resetting it so that an interrupt request has not occurred.
+
+	counter10k++;	
 
 
 	// so dense... so glorious.  Covers positive and negative RPM.
 	// 
-//#ifndef SENSORLESS
 	revCounter++;
 	if (revCounter >= revCounterMax) { // 512 ticks per revolution for encoder.
 		RPS_times16 = POSCNT;	// if POSCNT is 0x0FFFF due to THE MOTOR GOING BACKWARDS, RPS_times16 would be -1, since it's of type signed short.  So, it's all good.  Negative RPM is covered.
 		POSCNT = 0;
 		revCounter = 0;
 	}
-//#endif
-
 	// CH0 corresponds to ADCBUF0. etc...
 	// CH0=AN7, CH1=AN0, CH2=AN1, CH3=AN2. 
 	// AN0 = CH1 = ADThrottle
@@ -626,44 +435,39 @@ void __attribute__ ((__interrupt__,auto_psv)) _ADCInterrupt(void) {
 	ADCurrent1 = ADCBUF2;
 	ADCurrent2 = ADCBUF3;
 	Ia = ADCurrent1;	// CH2 = ADCurrent1
-	Ib_times2 = ADCurrent2;		// CH3 = ADCurrent2
+	Ib = ADCurrent2;		// CH3 = ADCurrent2.
 
 	Ia -= vRef1;  // vRef1 is just a constant found at the beginning of the program, approximately = 512, that changes the current feedback from being centered at 512 to centered at 0.  It's specific to current sensor #1.
-	Ib_times2 -= vRef2;  // vRef2 is just a constant found at the beginning of the program, approximately = 512, that changes the current feedback from being centered at 512 to centered at 0.  It's specific to current sensor #2.
-
+	Ib -= vRef2;  // vRef2 is just a constant found at the beginning of the program, approximately = 512, that changes the current feedback from being centered at 512 to centered at 0.  It's specific to current sensor #2.
 	// So, you must change the interval to [-4096, 4096], so as to match the throttle range below to make feedback comparable with commanded current. So...
 
 	Ia <<= 4;	// Ia is now in [-4096, 4096] if it was in  [-256, 256].  In other words, if it was in [-2*LEM Rating, 2*LEM Rating]. 
-	Ib_times2 <<= 5;
-
-//	if (!huntingForGoodPIValues && !startNewRotorTest) { 
-/*
-	throttleSum += ADCBUF1;
+	Ib <<= 4;   // Ib is now in [-4096, 4096] if it was in  [-256, 256].  In other words, if it was in [-2*LEM Rating, 2*LEM Rating]. 
+	Ic = -Ia - Ib;
+	Ib_times2 = (Ib << 1);
+	rawThrottle = ADCBUF1;
+	throttleSum += rawThrottle;
 	temperatureSum += ADCBUF0;
-	batteryCurrentLong = __builtin_mulss(Ia,pdc1) + __builtin_mulss(Ib,pdc2) + __builtin_mulss(-Ia-Ib,pdc3);  // batteryCurrent is in [-4096*sqrt(3)/2, 4096*sqrt(3)/2] = [-3547, 3547].
+	batteryCurrentLong = __builtin_mulss(Ia,pdc1) + __builtin_mulss(Ib,pdc2) + __builtin_mulss(Ic,pdc3);  // batteryCurrent is in [-4096*sqrt(3)/2, 4096*sqrt(3)/2] = [-3547, 3547].
 	batteryCurrentSum += batteryCurrentLong;
 	throttleCounter++;
 	if (throttleCounter >= 128) {
 		throttleCounter = 0;
 		throttle = (throttleSum >> 7);  // in [0, 1023].
 		temperatureBasePlate = (temperatureSum >> 7); // in [0,1023]
-		batteryCurrentNormalized = __builtin_divsd(batteryCurrentSum >> 7,MAX_DUTY);
+		if (temperatureBasePlate < 147) temperatureBasePlate = 147; // clamp it so you get an integer when converting to the variable resistance.  This assumes +5v -- 1k -- 10k thermistor --- 4.7k --- ground.  P/N: NTCALUG03A103G
+		batteryCurrentNormalized = __builtin_divsd(batteryCurrentSum >> 7,MAX_DUTY);  // 
 		throttleSum = 0;
 		temperatureSum = 0;
 		batteryCurrentSum = 0;
 	
 		// Is there a throttle fault?
 		if (throttle <= savedValues.throttleFaultPosition) {
-//			throttleFaultCounter++;
-//			if (throttleFaultCounter >= THROTTLE_FAULT_COUNTS) {  // don't worry about clamping it.  If there's a throttle fault, you must turn off the controller to clear it.
 			faultBits |= THROTTLE_FAULT;
-//			}
 		}
-//			else {
-//				if (throttleFaultCounter > 0) {  // Hurray, no fault, so decrement the fault counter if necessary.
-//					throttleFaultCounter--;
-//				}
-//			}
+		if (savedValues2.throttleType == 1) {
+			throttle = 1023 - throttle;  // invert it.
+		}
 		// I think I'll work my way left to right.  ThrottleFaultVoltage < ThrottleMaxRegen < ThrottleMinRegen < ThrottleMin < ThrottleMax 
 		if (throttle < savedValues.maxRegenPosition) {  //First clamp it below.
 			throttle = savedValues.maxRegenPosition;	
@@ -727,15 +531,6 @@ void __attribute__ ((__interrupt__,auto_psv)) _ADCInterrupt(void) {
 			}
 		}
 	}
-//	}
-//	else {
-//		throttleSum = 0;
-//		temperatureSum = 0;
-//		batteryCurrentSum = 0;
-//		throttleCounter = 0;
-//	}
-	/////////////////////////////////////////////////////////////////////////////////////////////
-*/
 	///////////////////////////////////////////////////////////////////////////////////////////////
 	// Clarke transform:
 	//  	First, take the 3 vectors, 120 degrees apart, and add them to
@@ -745,81 +540,25 @@ void __attribute__ ((__interrupt__,auto_psv)) _ADCInterrupt(void) {
 	// 1/sqrt(3) * 2^16 = 37837
 	
 	i_alpha = Ia;
-	if (captureVariable) {
-		IdRefRef = IqRefRef = 300;
-//		if (startUp == 0) {
-		if ((counter10k & 511) == 0) {
-			if (NUMBER_OF_DATA_TYPES == 1) {
-				largeStorage.data[0][dataCounter] = rGlobal;
-			}
-			else if (NUMBER_OF_DATA_TYPES == 2) {
-				largeStorage.data[0][dataCounter] = rGlobal_filtered;
-				largeStorage.data[1][dataCounter] = rotorFluxRPS_times16;//E_beta_times8;//v_beta_volts_times8_filtered_corrected;			
-			}
-			else if (NUMBER_OF_DATA_TYPES == 3) {
-				largeStorage.data[0][dataCounter] = rGlobal;
-				largeStorage.data[1][dataCounter] = Vd;//E_beta_times8;//v_beta_volts_times8_filtered_corrected;
-				largeStorage.data[2][dataCounter] = Vq;//rotorFluxRPS_times16;//rotorFluxAngle;//temp2;
-			}
-			dataCounter += 1;
-			if (dataCounter >= PI_GOOD_VALUES_ARRAY_SIZE/NUMBER_OF_DATA_TYPES) {
-				largeArrayLoaded = 1;
-				captureVariable = 0;
-				dataCounter = 0;
-			}
-//		}
-		}
-	}
 	i_beta = __builtin_mulsu((int)(Ib_times2 + Ia), 37837u) >> 16;  // 1/sqrt(3) * (i_a + 2 * Ib).  
 
 	// End of clarke transform.
 	////////////////////////////////////////////////////////////////////////////////////////////////
-	// "ComputeRotorFluxAngle()" uses Id and Iq, found below.  So, initialize them to something.  I'll have Id start as 0, and Iq start as 0.
-	//	ComputeRotorFluxAngle();
-	if (huntingForGoodPIValues) {
+	if (myPI.testRunning) {
 		rotorFluxAngle = 0;	 // set rotorFluxAngle to zero while tuning the PI loop with a locked rotor.
-//		rotorFluxAngleSensorless = 0;	 // set rotorFluxAngle to zero while tuning the PI loop with a locked rotor.
 	}
 	else {
 		ComputeRotorFluxAngle();
-//		ComputeRotorFluxAngleSensorless();
 	}
 	////////////////////////////////////////////////////////////////////////////////////////////////
 	// Park transform:
 	// rotorFluxAngle is in [0, 511].
 	// sin(theta + 90 degrees) = cos(theta).
 	// I want the 2 angles to be in [0, 511] so I can use the lookup table.
-/*	if (savedValues2.sensorless == 1) {
-		if (startUp == 1) {
-			if (RPS_times16 < 300) {
-				rotorFluxAnglePlus90 = ((rotorFluxAngle + 128) & 511);  // To advance 90 degrees on a scale of 0 to 511, you add 128, 
-																// and then do "& 511" to make it wrap around if overflow occurred.
-				cos_theta_times32768 = _sin_times32768[rotorFluxAnglePlus90];  // 
-				sin_theta_times32768 = _sin_times32768[rotorFluxAngle];  // 
-			}
-			else {
-				startUp = 0;
-			}
-		}
-		else {
-
-//			rotorFluxAnglePlus90 = ((rotorFluxAngle + 128) & 511);  // To advance 90 degrees on a scale of 0 to 511, you add 128, 
+	rotorFluxAnglePlus90 = ((rotorFluxAngle + 128) & 511);  // To advance 90 degrees on a scale of 0 to 511, you add 128, 
 															// and then do "& 511" to make it wrap around if overflow occurred.
-//			cos_theta_times32768 = _sin_times32768[rotorFluxAnglePlus90];  // 
-//			sin_theta_times32768 = _sin_times32768[rotorFluxAngle];  // 			
-			rotorFluxAnglePlus90 = ((rotorFluxAngleSensorless + 128) & 511);  // To advance 90 degrees on a scale of 0 to 511, you add 128, 
-															// and then do "& 511" to make it wrap around if overflow occurred.
-			cos_theta_times32768 = _sin_times32768[rotorFluxAnglePlus90];  // 
-			sin_theta_times32768 = _sin_times32768[rotorFluxAngleSensorless];  // 			
-		}
-	}
-	else {
-*/
-		rotorFluxAnglePlus90 = ((rotorFluxAngle + 128) & 511);  // To advance 90 degrees on a scale of 0 to 511, you add 128, 
-															// and then do "& 511" to make it wrap around if overflow occurred.
-		cos_theta_times32768 = _sin_times32768[rotorFluxAnglePlus90];  // 
-		sin_theta_times32768 = _sin_times32768[rotorFluxAngle];  // 
-//	}
+	cos_theta_times32768 = _sin_times32768[rotorFluxAnglePlus90];  // 
+	sin_theta_times32768 = _sin_times32768[rotorFluxAngle];  // 
 	// Park Transform:
 	// Id = Ialpha*cos(theta) + Ibeta*sin(theta)
 	// Iq = -Ialpha*sin(theta) + Ibeta*cos(theta)
@@ -827,70 +566,68 @@ void __attribute__ ((__interrupt__,auto_psv)) _ADCInterrupt(void) {
 	Iq = (__builtin_mulss((int)(-i_alpha), (int)sin_theta_times32768) + __builtin_mulss((int)i_beta,(int)cos_theta_times32768)) >> 15; 
 
 	if (faultBits == 0) {
-		if (huntingForGoodPIValues) {
-			if ((counter10k - delayBetweenPITests) < 1000) {
+		if (myPI.testRunning) {
+			if ((counter10k - myPI.previousTestCompletionTime) < 1000) {  // wait 0.1 seconds between tests.  That gives Id and Iq a chance to go back to zero.
 				IdRef = 0;
 				IqRef = 0;
 			}
-			else {
+			else {  // I'm running the PI loop test on a particular Kp and Ki to see if it passes the convergence test below.
 				IdRef = 0;  // 512 on a scale of 0 to 4096 corresponds to 75 amps for a LEM Hass 300-s.  Because 4096 means 600amps.
-				IqRef = 511;//*ampToNormalizedMultiplier;
-				//if (IqRef > 4095) IqRef = 4095;
+				IqRef = 511;
 		
-				if (piIterationIndex == 0) {
-					piIterationIndex++;
+				if (myPI.iteration == 0) {
+					myPI.iteration++;
 				}
 				else {
-					if (pi_Iq.error < -80) {
+					if (myPI.error_q < -80) {  // if it overshot the target by 80, move on to the next one.  We don't want overshoot.
 						MoveToNextPIValues();
 					}
-					else if (pi_Iq.error > IqRef + 200) {  //  IqRef is a constant 511.  If it oscillated up to +711, that's bad.  move on.
+					else if (myPI.error_q > IqRef + 200) {  //  IqRef is a constant 511.  If Iq swung to -200, that's bad.  Move on.  Iq shouldn't go below zero much.
 						MoveToNextPIValues();
 					}
-					else if (piZeroCrossingIndex == -1 && piIterationIndex > 20) {  // PIZeroCrossingIndex == -1 means it hasn't crossed zero yet.
+					else if (myPI.zeroCrossingIndex == -1 && myPI.iteration > myPI.maxIterationsBeforeZeroCrossing) {  // myPI.zeroCrossingIndex == -1 means it hasn't crossed zero yet.
 						MoveToNextPIValues();  // CONVERGENCE TOO SLOW!!!  Move on!
 					}
-					else if (pi_Iq.error > 80 && piZeroCrossingIndex >= 0) {  // it already crossed zero, but now is way back up again.  This is oscillation.  move on!
+					else if (myPI.error_q > 80 && myPI.zeroCrossingIndex >= 0) {  // it already crossed zero, but now is way back up again.  This is oscillation.  move on!
 						MoveToNextPIValues();
 					}
 					else {
-						if (pi_Iq.error <= 0 && piZeroCrossingIndex == -1) {  // if it's crossing zero for the first time, record the location.
-							piZeroCrossingIndex = piIterationIndex;
+						if (myPI.error_q <= 0 && myPI.zeroCrossingIndex == -1) {  // if it's crossing zero for the first time, record the location.
+							myPI.zeroCrossingIndex = myPI.iteration;
 						}
-						piIterationIndex++;
-						if (piIterationIndex >= MAX_PI_ITERATIONS) {  // The PI values made it through the rigorous testing.  haha.  Save P in the PI_data array.  Q can be obtained by dividing P by 62.
-							largeStorage.PI_data[piGoodValuesIndex] = (int)pi_Iq.P;
-							piGoodValuesIndex++;
-							if (piGoodValuesIndex >= PI_GOOD_VALUES_ARRAY_SIZE) {
-								piGoodValuesArrayLoaded = 1;
-								huntingForGoodPIValues = 0;
-							}
-							else {
-								// Now, start over again.  MOve to next PI values.
-								MoveToNextPIValues();
-							}
+						myPI.iteration++;
+						if (myPI.iteration >= 400) {  // 400 iterations of the PI loop happened, and it passed all the rigorous requirements.  Save Kp & Kq constants.  They are keepers!
+							savedValues.Kp = myPI.Kp;
+							savedValues.Ki = myPI.Ki;
+							myPI.testRunning = 0;  // You found a good PI value, so quit hunting!
+							myPI.testFailed = 0;
+							myPI.testFinished = 1;
 						}
 					}
-					if (pi_Iq.P > MAX_PI_P) {
-						piGoodValuesArrayLoaded = 1;  // stop here.  You have gone far enough.
-						huntingForGoodPIValues = 0;
+					if (myPI.Kp > 20000) {  // 
+						myPI.testRunning = 0;
+						myPI.testFailed = 1;
+						myPI.testFinished = 1;
 					}
 				}
 			}
 		}
-		else if (startNewRotorTest) {  // I need this to run for say, 1 second, and then record the RPM.
+		else if (myRotor.testRunning) {  // I need this to run for say, 5 seconds, and then record the RPM.
 			IdRefRef = 200;//20*ampToNormalizedMultiplier;
 			IqRefRef = 200;//*ampToNormalizedMultiplier;
 			//if (IdRef > 4095) IdRef = 4095;
 			//if (IqRef > 4095) IqRef = 4095;
-			if (counter10k - rotorStartTime > 50000) {  // 5 seconds.
-				rotorStartTime = counter10k;
-				largeStorage.rotor_data[savedValues2.rotorTimeConstantArrayIndex] = RPS_times16; // record RPM.
-				savedValues2.rotorTimeConstantArrayIndex++;
-				if (savedValues2.rotorTimeConstantArrayIndex >= ROTOR_TIME_CONSTANT_ARRAY_SIZE) {
-					rotorArrayLoaded = 1;
-					startNewRotorTest = 0;
-					savedValues2.rotorTimeConstantArrayIndex = 0;
+			if (counter10k - myRotor.startTime > 20000) {  // 2 seconds.
+				myRotor.startTime = counter10k;
+				if (RPS_times16 > myRotor.maxTestSpeed) {
+					myRotor.maxTestSpeed = RPS_times16; // save the best speed so far.
+					myRotor.bestTimeConstantIndex = myRotor.timeConstantIndex;
+				}
+				myRotor.timeConstantIndex++;
+				if (myRotor.timeConstantIndex >= MAX_ROTOR_TIME_CONSTANT_INDEX) {
+					savedValues2.rotorTimeConstantIndex = myRotor.bestTimeConstantIndex;
+					myRotor.testRunning = 0;
+					myRotor.testFinished = 1;
 					IdRefRef = 0;
 					IqRefRef = 0;
 				}
@@ -900,64 +637,64 @@ void __attribute__ ((__interrupt__,auto_psv)) _ADCInterrupt(void) {
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////
 	// PI Loop:
-	pi_Iq.error = IqRef - Iq;
-	pi_Id.error = IdRef - Id;
+	myPI.error_q = IqRef - Iq;
+	myPI.error_d = IdRef - Id;
 	
-	pi_Iq.errorSum += pi_Iq.error - clampErrorVq;
-	pi_Id.errorSum += pi_Id.error - clampErrorVd;
+	myPI.errorSum_q += myPI.error_q - myPI.clampErrorVq;
+	myPI.errorSum_d += myPI.error_d - myPI.clampErrorVd;
 	
 	if (IdRef == 0) {
-		pi_Id.pwm = 0;
-		pi_Id.errorSum = 0;
-		pi_Id.error = 0;
-		clampErrorVd = 0;
+		myPI.pwm_d = 0;
+		myPI.errorSum_d = 0;
+		myPI.error_d = 0;
+		myPI.clampErrorVd = 0;
 	}
 	else {
-		pi_Id.pwm = (pi_Id.P * pi_Id.error) + (pi_Id.I*pi_Id.errorSum);
+		myPI.pwm_d = (myPI.Kp * myPI.error_d) + (myPI.Ki*myPI.errorSum_d);
 	}
 	if (IqRef == 0) {
-		pi_Iq.pwm = 0;
-		pi_Iq.errorSum = 0;
-		pi_Iq.error = 0;
-		clampErrorVq = 0;
+		myPI.pwm_q = 0;
+		myPI.errorSum_q = 0;
+		myPI.error_q = 0;
+		myPI.clampErrorVq = 0;
 	}
 	else {
-		pi_Iq.pwm = (pi_Iq.P * pi_Iq.error) + (pi_Iq.I * pi_Iq.errorSum);
+		myPI.pwm_q = (myPI.Kp * myPI.error_q) + (myPI.Ki * myPI.errorSum_q);
 	}
 
-	if (pi_Id.pwm > (MAX_VD_VQ << 13)) {
-		pi_Id.pwm = (MAX_VD_VQ << 13);
+	if (myPI.pwm_d > (MAX_VD_VQ << 13)) {
+		myPI.pwm_d = (MAX_VD_VQ << 13);
 		faultBits |= PI_OVERFLOW_FAULT;
 	}
-	else if (pi_Id.pwm < ((-MAX_VD_VQ) << 13)) {
-		pi_Id.pwm = ((-MAX_VD_VQ) << 13);		
+	else if (myPI.pwm_d < ((-MAX_VD_VQ) << 13)) {
+		myPI.pwm_d = ((-MAX_VD_VQ) << 13);		
 		faultBits |= PI_OVERFLOW_FAULT;
 	}
-	if (pi_Iq.pwm > (MAX_VD_VQ << 13)) {
-		pi_Iq.pwm = (MAX_VD_VQ << 13);
+	if (myPI.pwm_q > (MAX_VD_VQ << 13)) {
+		myPI.pwm_q = (MAX_VD_VQ << 13);
 		faultBits |= PI_OVERFLOW_FAULT;
 	}
-	else if (pi_Iq.pwm < ((-MAX_VD_VQ) << 13)) {
-		pi_Iq.pwm = ((-MAX_VD_VQ) << 13);		
+	else if (myPI.pwm_q < ((-MAX_VD_VQ) << 13)) {
+		myPI.pwm_q = ((-MAX_VD_VQ) << 13);		
 		faultBits |= PI_OVERFLOW_FAULT;
 	}
 
-	Vd = pi_Id.pwm >> 13;
-	Vq = pi_Iq.pwm >> 13;
+	Vd = myPI.pwm_d >> 13;
+	Vq = myPI.pwm_q >> 13;
 	tempVd = Vd;
 	tempVq = Vq;
 
 	ClampVdVq();
-	clampErrorVd = tempVd - Vd;
-	clampErrorVq = tempVq - Vq;
-	//	if (maxClampErrorVd < clampErrorVd) maxClampErrorVd = clampErrorVd;
-	//	if (minClampErrorVd > clampErrorVd) minClampErrorVd = clampErrorVd;
-	//	if (maxClampErrorVq < clampErrorVq) maxClampErrorVq = clampErrorVq;
-	//	if (minClampErrorVq > clampErrorVq) minClampErrorVq = clampErrorVq;
+	myPI.clampErrorVd = tempVd - Vd;
+	myPI.clampErrorVq = tempVq - Vq;
+	//	if (maxClampErrorVd < myPI.clampErrorVd) maxClampErrorVd = myPI.clampErrorVd;
+	//	if (minClampErrorVd > myPI.clampErrorVd) minClampErrorVd = myPI.clampErrorVd;
+	//	if (maxClampErrorVq < myPI.clampErrorVq) maxClampErrorVq = myPI.clampErrorVq;
+	//	if (minClampErrorVq > myPI.clampErrorVq) minClampErrorVq = myPI.clampErrorVq;
 
 	// should I have it go instantly to IqRefRef if IqRefRef is smaller in magnitude?
 	if (IqRef < IqRefRef) {
-		IqRef += rampRate;  // this is too fast.  I want ot to be a laxidaisical drift back so as to avoid harsh PI loop clamping.
+		IqRef += rampRate;  // I want it to be a laxidaisical drift back so as to avoid harsh PI loop clamping.
 		if (IqRef > IqRefRef) {
 			IqRef = IqRefRef;
 		}
@@ -1012,63 +749,62 @@ void __attribute__ ((__interrupt__,auto_psv)) _ADCInterrupt(void) {
 		PDC1 = 0;
 		PDC2 = 0;
 		PDC3 = 0;
-		pi_Id.error = 0l;
-		pi_Id.pwm = 0l;  
-		pi_Id.errorSum = 0l;
-		pi_Iq.error = 0l;
-		pi_Iq.pwm = 0l;  
-		pi_Iq.errorSum = 0l;		
+		myPI.error_d = 0l;
+		myPI.pwm_d = 0l;  
+		myPI.errorSum_d = 0l;
+		myPI.error_q = 0l;
+		myPI.pwm_q = 0l;  
+		myPI.errorSum_q = 0l;		
 	}
 	elapsedTimeInterrupt = TMR4 - startTimeInterrupt;
 }
 
 void MoveToNextPIValues() {
-	pi_Id.P += piRatio;
-	pi_Id.I += 1;
-	pi_Id.error = 0l;
-	pi_Id.pwm = 0l;  
-	pi_Id.errorSum = 0l;
+	myPI.Kp += myPI.ratioKpKi;
+	myPI.Ki += 1;
+	myPI.error_d = 0l;
+	myPI.pwm_d = 0l;  
+	myPI.errorSum_d = 0l;
 
-	pi_Iq.P += piRatio;
-	pi_Iq.I += 1;
-	pi_Iq.error = 0l;
-	pi_Iq.pwm = 0l;  
-	pi_Iq.errorSum = 0l;	
+	myPI.error_q = 0l;
+	myPI.pwm_q = 0l;  
+	myPI.errorSum_q = 0l;	
 
-	piIterationIndex = 0;
-	piZeroCrossingIndex = -1;
+	myPI.iteration = 0;
+	myPI.zeroCrossingIndex = -1;
 	IdRef = 0;
 	IqRef = 0;
-	delayBetweenPITests = counter10k;	
+	myPI.previousTestCompletionTime = counter10k;	
 }
 
 void InitPIStruct() {
-	// **3125, 50**
-	// 120v:  1875, 30
-	// 
+	myPI.Kp = (long)savedValues.Kp;
+	myPI.Ki = (long)savedValues.Ki;
+	myPI.error_d = 0l;
+	myPI.pwm_d = 0l;  
+	myPI.errorSum_d = 0l;
 
-	pi_Id.P = (long)savedValues.Kp_Id;
-	pi_Id.I = (long)savedValues.Ki_Id;
-	pi_Id.error = 0l;
-	pi_Id.pwm = 0l;  
-	pi_Id.errorSum = 0l;
+	myPI.error_q = 0l;
+	myPI.pwm_q = 0l;  
+	myPI.errorSum_q = 0l;
 
-	pi_Iq.P = (long)savedValues.Kp_Iq;
-	pi_Iq.I = (long)savedValues.Ki_Iq;
-	pi_Iq.error = 0l;
-	pi_Iq.pwm = 0l;  
-	pi_Iq.errorSum = 0l;
+	myPI.testFinished = 0;
+	myPI.testFailed = 0;
+	myPI.testRunning = 0;
+//	myPI.ratioKpKi = savedValues2.ratioKpKi;
+	myPI.zeroCrossingIndex = -1; // initialize to -1.
+	myPI.iteration = 0; // how many times have you run the PI loop with the same Kp and Ki?  This is used in the PI auto loop tuning.
+	myPI.maxIterationsBeforeZeroCrossing = 20;
+	myPI.previousTestCompletionTime = counter10k;
 }
 
 void ComputeRotorFluxAngle() {
-//	static unsigned int rotorFluxAngle_times128 = 0;  // For fine control.
-//	static long magCurrChange = 0;
-//	static long slipSpeedNumerator = 0;
-//	static int slipSpeedRPS_times16 = 0;
-//	static int rotorFluxRPS_times16 = 0;
-//	static int angleChange_times128 = 0;
-//	static long magnetizingCurrentFine = 0;
-//	static int magnetizingCurrent = 0;
+	static volatile unsigned int rotorFluxAngle_times128 = 0;  // For fine control.
+	static volatile long magCurrChange = 0;
+	static volatile long slipSpeedNumerator = 0;
+	static volatile int angleChange_times128 = 0;
+	static volatile long magnetizingCurrentFine = 0;
+	static volatile int magnetizingCurrent = 0;
 
 //;	 Physical form of equations:
 //;  Magnetizing current (amps):
@@ -1089,9 +825,9 @@ void ComputeRotorFluxAngle() {
 //; 1.  Magnetizing current (amps):
 //;     Imag = Imag + (fLoopPeriod/fRotorTmConst)*(Id - Imag)
 //      rotorTimeConstantArray[]'s entries have been scaled up by 2^18 to give more resolution for the rotor time constant.  I scaled by 18, because that allowed incrementing rotor time constant by 0.01 seconds.
-//	magnetizingCurrent += ((rotorTimeConstantArray1[savedValues2.rotorTimeConstantArrayIndex] * (Id - magnetizingCurrent))) >> 18;
+//	magnetizingCurrent += ((rotorTimeConstantArray1[myRotor.rotorTimeConstantIndex] * (Id - magnetizingCurrent))) >> 18;
 ///////////////////////////////////////////////////////////////////////////
-	magCurrChange = __builtin_mulus((unsigned int)rotorTimeConstantArray1[savedValues2.rotorTimeConstantArrayIndex], (int)(Id - magnetizingCurrent));
+	magCurrChange = __builtin_mulus((unsigned int)rotorTimeConstantArray1[myRotor.timeConstantIndex], (int)(Id - magnetizingCurrent));
 	if (magCurrChange > 0) {
 		if (magnetizingCurrentFine < MAX_LONG_INT - magCurrChange) {
 			magnetizingCurrentFine += magCurrChange;
@@ -1111,7 +847,7 @@ void ComputeRotorFluxAngle() {
 		}
 	}
 	magnetizingCurrent = (int)(magnetizingCurrentFine >> 18);
-	magnetizingCurrentAmps_times8 = __builtin_mulss((int)magnetizingCurrent, (int)currentSensorAmpsPerVoltTimes5) >> 11;  // 5/4*currentSensorAmpsPerVolt / 4096 * #ticks = amps.  So amps*8 cancels it down to >>11.
+//	magnetizingCurrentAmps_times8 = __builtin_mulss((int)magnetizingCurrent, (int)currentSensorAmpsPerVoltTimes5) >> 11;  // 5/4*currentSensorAmpsPerVolt / 4096 * #ticks = amps.  So amps*8 cancels it down to >>11.
 
 ////////////////////////////////////////////////////////////////////////////
 //; 2. To Compute Slip speed in RPS:
@@ -1127,7 +863,7 @@ void ComputeRotorFluxAngle() {
 		slipSpeedRPS_times16 = 0;  // If the numerator is 0, the whole thing is zero.
 	}
 	else {  // magnetizingCurrent != 0, slipSpeedNumerator != 0
-		slipSpeedNumerator = __builtin_mulus((unsigned int)rotorTimeConstantArray2[savedValues2.rotorTimeConstantArrayIndex], (int)Iq) >> 7; // Must scale down by 2^11 if you want units to be rev/sec.  But that's too grainy.  So, let's only scale down by 2^7 so you get slip speed in rev/sec * 16, rather than just rev/sec
+		slipSpeedNumerator = __builtin_mulus((unsigned int)rotorTimeConstantArray2[myRotor.timeConstantIndex], (int)Iq) >> 7; // Must scale down by 2^11 if you want units to be rev/sec.  But that's too grainy.  So, let's only scale down by 2^7 so you get slip speed in rev/sec * 16, rather than just rev/sec
 		if (magnetizingCurrent > 0) {
 			if (slipSpeedNumerator > 0L) {
 				if (slipSpeedNumerator > __builtin_mulss((int)magnetizingCurrent,(int)MAX_SLIP_SPEED_RPS_TIMES16)) {
@@ -1173,7 +909,6 @@ void ComputeRotorFluxAngle() {
 //     savedValues2.numberOfPolePairs is 2 in the case of my motor, because the RPM is listed as 1700 with 60 Hz 3 phase input.  1 pole pair would list the rpm as around 3400 with 60 Hz 3 phase input.
 //	rotorFluxRPS_times16 = savedValues2.numberOfPolePairs * RPS_times16 + slipSpeedRPS_times16;  // There's no danger of integer overflow for 1 or 2 pole pairs, so just do normal multiply.
 
-		rotorFluxRPS_times16 = savedValues2.numberOfPolePairs*RPS_times16 + slipSpeedRPS_times16;  // There's no danger of integer overflow, so just do normal multiply.  Larger number of pole pairs means lower rpm, so it all evens out.
 
 		if (RPS_times16 > maxRPS_times16) {  // You are about to friggen grenade your motor.  Slow down.
 			faultBits |= OVERSPEED_FAULT;
@@ -1181,6 +916,7 @@ void ComputeRotorFluxAngle() {
 		else if (RPS_times16 < -maxRPS_times16) {
 			faultBits |= OVERSPEED_FAULT;
 		}
+		rotorFluxRPS_times16 = savedValues2.numberOfPolePairs*RPS_times16 + slipSpeedRPS_times16;  // There's no danger of integer overflow, so just do normal multiply.  Larger number of pole pairs means lower rpm, so it all evens out.
 
 //;  Rotor flux angle (radians):
 //;     AngFlux = AngFlux + fLoopPeriod * 2 * pi * VelFluxRPS
@@ -1194,19 +930,18 @@ void ComputeRotorFluxAngle() {
 	angleChange_times128 = __builtin_mulus(53687u, (int)rotorFluxRPS_times16) >> 17;  // must shift down by 24 eventually, but let's keep a higher resolution here.  So, only shift down by 17.  Keeping 7 bits.
 	// angleChange_times128 must be in [-5242, 5242] assuming all the clamping I'm doing above.
 	rotorFluxAngle_times128 += (unsigned)angleChange_times128;  // if it overflows, so what.  it will wrap back around.  To go from [0,65536] --> [0,512], divide by by 128.  higher resolution rotor flux angle saved here.
-	oldRotorFluxAngle = rotorFluxAngle;
 	rotorFluxAngle = (rotorFluxAngle_times128 >> 7);
 }
 
 void ClampVdVq() {
 
-	static int VdPos, VqPos, small, big;
-	static int i;
-	static unsigned int fastDist;
-	static unsigned int r;
-	static unsigned int scale;
-	static int IdRefNew = 0;
-	static int IqRefNew = 0;
+	static volatile int VdPos, VqPos, small, big;
+	static volatile int i;
+	static volatile unsigned int fastDist;
+	static volatile unsigned int r;
+	static volatile unsigned int scale;
+	static volatile int IdRefNew = 0;
+	static volatile int IqRefNew = 0;
 
 	if (Vd == 0 && Vq == 0) return;  // Forgetting to do this caused me a lot of annoyances.  Divide by zero danger below.
 
@@ -1240,8 +975,8 @@ void ClampVdVq() {
 		big = (int)(__builtin_mulsu((int)big, (unsigned)scale) >> 16);
 		IqRefNew = (int)(__builtin_mulsu((int)IqRef, (unsigned)scale) >> 16);
 		IdRefNew = (int)(__builtin_mulsu((int)IdRef, (unsigned)scale) >> 16);  // what if I only did this to IdRef instead of both of them?  Then it would be field weakening.  I'll compare later.
-		IqRef = IqRefNew + (__builtin_mulus(3,IqRef - IqRefNew) >> 2);
-		IdRef = IdRefNew + (__builtin_mulus(3,IdRef - IdRefNew) >> 2);
+		IqRef = IqRefNew;// + (__builtin_mulus(3,IqRef - IqRefNew) >> 2);
+		IdRef = IdRefNew;// + (__builtin_mulus(3,IdRef - IdRefNew) >> 2);
 	}
 	else return;
 	
@@ -1358,7 +1093,7 @@ void ClearFlipFlop() {
 }
 
 void ClearDesatFault() {	// reset must be pulled low for at least 1.2uS.
-	int i = 0;
+	static volatile int i = 0;
 	O_LAT_CLEAR_DESAT = 0; 	// FOD8316 Datasheet says low for at least 1.2uS.  But then the stupid fault signal may not be cleared for 20 whole uS!
 	Delay1uS(); Delay1uS(); Delay1uS();
 	O_LAT_CLEAR_DESAT = 1;
@@ -1374,7 +1109,7 @@ void Delay1uS() {  // Assuming 30MIPs.
 
 void InitTimers() {
 	T1CON = 0;  // Make sure it starts out as 0.
-	T1CONbits.TCKPS = 0b11;  // prescale of 256.  So, timer1 will run at 58593.75 * 2Hz if Fcy is 30.000MHz.
+	T1CONbits.TCKPS = 0b11;  // prescale of 256.  So, timer1 will run at 115200Hz if Fcy is 7.3728*4 MHz.
 	PR1 = 0xFFFF;  // 
 	T1CONbits.TON = 1; // Start the timer.
 
@@ -1403,21 +1138,21 @@ void InitTimers() {
 
 // Assuming a 30MHz clock, one tick is 1/(58594*2) seconds.
 void Delay(unsigned int time) {
-	unsigned int temp;
+	static volatile unsigned int temp;
 	temp = TMR1;	
 	while (TMR1 - temp < time) {
 		ClrWdt();
 	}
 }
 void DelaySeconds(int time) {
-	int i;
+	static volatile int i;
 	for (i = 0; i < time; i++) { 
 		Delay(58594u);  // 0.5 second.
 		Delay(58594u);  // 0.5 second.
 	}
 }
 void DelayTenthsSecond(int time) {
-	int i;
+	static volatile int i;
 	for (i = 0; i < time; i++) { 
 		Delay(5859*2);  // 58594*2 ticks in Delay is 1 second.  So, 1/10 of that.
 	}
@@ -1634,43 +1369,27 @@ void InitADAndPWM() {
 	PDC3 = 0;
 }
 
-// I know I should disable interrupts here, but I don't want to affect interrupt timing.
-void FetchRTData() {
-	RTData.throttle = throttle;  // in [-4096, 4096]
-	RTData.temperatureBasePlate = temperatureBasePlate;  // in [0, 726] or something like that.  726 means about 85degC.
-
-	RTData.IdRef = IdRef;	// range is [-4096, 4096]
-	RTData.Id = Id;			// range is [-4096, 4096]
-	RTData.IqRef = IqRef;  	// range is [-4096, 4096]
-	RTData.Iq = Iq;			// range is [-4096, 4096]
-	RTData.pdc1 = pdc1;
-	RTData.pdc2 = pdc2;
-	RTData.pdc3 = pdc3;
-	RTData.RPS_times16 = RPS_times16;
-	RTData.batteryCurrentNormalized = batteryCurrentNormalized;
-	RTData.faultBits = faultBits;	
-}
 
 void EESaveValues() {  // save the new stuff.
-	int i = 0;
-	EEDataInRam1[0] = savedValues.Kp_Id;					// Id proportional gain
-	EEDataInRam1[1] = savedValues.Ki_Id;						// Id integreal gain
-	EEDataInRam1[2] = savedValues.Kp_Iq;		// throttle low voltage (foot off pedal)
-	EEDataInRam1[3] = savedValues.Ki_Iq;		// throttle high voltage (full throttle)
-	EEDataInRam1[4] = savedValues.currentSensorAmpsPerVolt;		// throttle fault voltage.  Too low of voltage (to protect from disconnected throttle.
-	EEDataInRam1[5] = savedValues.maxRegenPosition;		// gain for actual throttle position
-	EEDataInRam1[6] = savedValues.minRegenPosition;			// gain for pwm (voltage)
-	EEDataInRam1[7] = savedValues.minThrottlePosition;				// 0-8.  8 means zero seconds to max current. 7 means 1 second to max current ... 0 means 8 seconds to max current.
-	EEDataInRam1[8] = savedValues.maxThrottlePosition;			// real time data period
-	EEDataInRam1[9] = savedValues.throttleFaultPosition;	// motor overspeed threshold
-	EEDataInRam1[10] = savedValues.maxBatteryAmps;	// motor overspeed fault time, in units of about 1/128 sec.
-	EEDataInRam1[11] = savedValues.maxBatteryAmpsRegen;		// battery amps limit.  Unit is amperes. Must be <= maxMotorAmps 
-	EEDataInRam1[12] = savedValues.maxMotorAmps;			// precharge time in 0.1 second increments
-	EEDataInRam1[13] = savedValues.maxMotorAmpsRegen;	// motor current must be > motor_sc_amps to calculate motor speed.  Units are amperes.
-	EEDataInRam1[14] = savedValues.prechargeTime;		// motor amps limit.  Unit is amperes.  Must be >= maxBatteryAmps
-	EEDataInRam1[15] = 0;
+	static volatile int i = 0;
+	EEDataInRam1[0] = savedValues.Kp;						// proportional gain shared between Id and Iq.
+	EEDataInRam1[1] = savedValues.Ki;						// integreal gain shared between Id and Iq.
+	EEDataInRam1[2] = savedValues.currentSensorAmpsPerVolt;	// Ex:  if a 
+	EEDataInRam1[3] = savedValues.maxRegenPosition;			// 
+	EEDataInRam1[4] = savedValues.minRegenPosition;			// 
+	EEDataInRam1[5] = savedValues.minThrottlePosition;		//	
+	EEDataInRam1[6] = savedValues.maxThrottlePosition;		// 
+	EEDataInRam1[7] = savedValues.throttleFaultPosition;	// 
+	EEDataInRam1[8] = savedValues.maxBatteryAmps;			//
+	EEDataInRam1[9] = savedValues.maxBatteryAmpsRegen;		// 
+	EEDataInRam1[10] = savedValues.maxMotorAmps;			//
+	EEDataInRam1[11] = savedValues.maxMotorAmpsRegen;		// 
+	EEDataInRam1[12] = savedValues.prechargeTime;			// 
+	EEDataInRam1[13] = 0;
+	EEDataInRam1[14] = 0;
+	EEDataInRam1[15] = 0;									// This is the CRC.  It will be computed below.  Just a simple one.  Sum up all the variables.
 
-	EEDataInRam2[0] = savedValues2.rotorTimeConstantArrayIndex;
+	EEDataInRam2[0] = savedValues2.rotorTimeConstantIndex;
 	EEDataInRam2[1] = savedValues2.numberOfPolePairs;
 	EEDataInRam2[2] = savedValues2.maxRPM;
 	EEDataInRam2[3] = savedValues2.throttleType;
@@ -1678,14 +1397,13 @@ void EESaveValues() {  // save the new stuff.
 	EEDataInRam2[5] = savedValues2.statorResistance_times1024;
 	EEDataInRam2[6] = savedValues2.statorInductance_times1024;
 	EEDataInRam2[7] = savedValues2.packVoltage;
-	EEDataInRam2[8] = savedValues2.sensorless;
-	EEDataInRam2[9] = 0;
-	EEDataInRam2[10] = 0;
-	EEDataInRam2[11] = 0;
+	EEDataInRam2[8] = savedValues2.rotorInductance_times1024;
+	EEDataInRam2[9] = savedValues2.sensorless;
+	EEDataInRam2[10] = savedValues2.dataToDisplaySet1;
+	EEDataInRam2[11] = savedValues2.dataToDisplaySet2;
 	EEDataInRam2[12] = 0;
 	EEDataInRam2[13] = 0;
 	EEDataInRam2[14] = 0;
-	EEDataInRam2[15] = 0;
 	for (i = 0; i < 15; i++) {
 		EEDataInRam1[15] += EEDataInRam1[i];	// compute checksum.
 		EEDataInRam2[15] += EEDataInRam2[i];
@@ -1723,8 +1441,8 @@ void EESaveValues() {  // save the new stuff.
 }
 
 void MoveDataFromEEPromToRAM() {
-	int i = 0;
-	unsigned int CRC1 = 0, CRC2 = 0, CRC3 = 0, CRC4 = 0;
+	static volatile int i = 0;
+	static volatile unsigned int CRC1 = 0, CRC2 = 0, CRC3 = 0, CRC4 = 0;
 
 	_memcpy_p2d16(EEDataInRam1, EE_addr1, _EE_ROW);
 	_memcpy_p2d16(EEDataInRam2, EE_addr2, _EE_ROW);
@@ -1738,47 +1456,45 @@ void MoveDataFromEEPromToRAM() {
 	}
 
 	if (EEDataInRam1[15] == CRC1) {  // crc from EEProm is OK for copy 1.  There has been a previously saved configuration.  
-		savedValues.Kp_Id = EEDataInRam1[0];		// 
-		savedValues.Ki_Id = EEDataInRam1[1];						// 
-		savedValues.Kp_Iq = EEDataInRam1[2];		// 
-		savedValues.Ki_Iq = EEDataInRam1[3];						// 
-		savedValues.currentSensorAmpsPerVolt = EEDataInRam1[4];		// 
-		savedValues.maxRegenPosition = EEDataInRam1[5];		// 
-		savedValues.minRegenPosition = EEDataInRam1[6];		// 
-		savedValues.minThrottlePosition = EEDataInRam1[7];	// 
-		savedValues.maxThrottlePosition = EEDataInRam1[8];	// 
-		savedValues.throttleFaultPosition = EEDataInRam1[9];	// 
-		savedValues.maxBatteryAmps = EEDataInRam1[10];		// 
-		savedValues.maxBatteryAmpsRegen = EEDataInRam1[11];	// 
-		savedValues.maxMotorAmps = EEDataInRam1[12];		// 
-		savedValues.maxMotorAmpsRegen = EEDataInRam1[13];	//  
-		savedValues.prechargeTime = EEDataInRam1[14];		//
+		savedValues.Kp = EEDataInRam1[0];		// 
+		savedValues.Ki = EEDataInRam1[1];						// 
+		savedValues.currentSensorAmpsPerVolt = EEDataInRam1[2];		// 
+		savedValues.maxRegenPosition = EEDataInRam1[3];		// 
+		savedValues.minRegenPosition = EEDataInRam1[4];		// 
+		savedValues.minThrottlePosition = EEDataInRam1[5];	// 
+		savedValues.maxThrottlePosition = EEDataInRam1[6];	// 
+		savedValues.throttleFaultPosition = EEDataInRam1[7];	// 
+		savedValues.maxBatteryAmps = EEDataInRam1[8];		// 
+		savedValues.maxBatteryAmpsRegen = EEDataInRam1[9];	// 
+		savedValues.maxMotorAmps = EEDataInRam1[10];		// 
+		savedValues.maxMotorAmpsRegen = EEDataInRam1[11];	//  
+		savedValues.prechargeTime = EEDataInRam1[12];		//
+		savedValues.spares[0] = EEDataInRam1[13];			//
+		savedValues.spares[1] = EEDataInRam1[14];			//
 		savedValues.crc = EEDataInRam1[15];					// 
 	}
-	else if (EEDataInRam2[15] == CRC2) {
-		savedValues.Kp_Id = EEDataInRam2[0];		// 
-		savedValues.Ki_Id = EEDataInRam2[1];						// 
-		savedValues.Kp_Iq = EEDataInRam2[2];		// 
-		savedValues.Ki_Iq = EEDataInRam2[3];						// 
-		savedValues.currentSensorAmpsPerVolt = EEDataInRam2[4];		// 
-		savedValues.maxRegenPosition = EEDataInRam2[5];		// 
-		savedValues.minRegenPosition = EEDataInRam2[6];		// 
-		savedValues.minThrottlePosition = EEDataInRam2[7];	// 
-		savedValues.maxThrottlePosition = EEDataInRam2[8];	// 
-		savedValues.throttleFaultPosition = EEDataInRam2[9];	// 
-		savedValues.maxBatteryAmps = EEDataInRam2[10];		// 
-		savedValues.maxBatteryAmpsRegen = EEDataInRam2[11];	// 
-		savedValues.maxMotorAmps = EEDataInRam2[12];		// 
-		savedValues.maxMotorAmpsRegen = EEDataInRam2[13];	//  
-		savedValues.prechargeTime = EEDataInRam2[14];		//
+	else if (EEDataInRam2[15] == CRC2) {  // crc from EEProm is OK for copy 1.  There has been a previously saved configuration.  
+		savedValues.Kp = EEDataInRam2[0];		// 
+		savedValues.Ki = EEDataInRam2[1];						// 
+		savedValues.currentSensorAmpsPerVolt = EEDataInRam2[2];		// 
+		savedValues.maxRegenPosition = EEDataInRam2[3];		// 
+		savedValues.minRegenPosition = EEDataInRam2[4];		// 
+		savedValues.minThrottlePosition = EEDataInRam2[5];	// 
+		savedValues.maxThrottlePosition = EEDataInRam2[6];	// 
+		savedValues.throttleFaultPosition = EEDataInRam2[7];	// 
+		savedValues.maxBatteryAmps = EEDataInRam2[8];		// 
+		savedValues.maxBatteryAmpsRegen = EEDataInRam2[9];	// 
+		savedValues.maxMotorAmps = EEDataInRam2[10];		// 
+		savedValues.maxMotorAmpsRegen = EEDataInRam2[11];	//  
+		savedValues.prechargeTime = EEDataInRam2[12];		//
+		savedValues.spares[0] = EEDataInRam2[13];			//
+		savedValues.spares[1] = EEDataInRam2[14];			//
 		savedValues.crc = EEDataInRam2[15];					// 
 	}
 	else {
 		savedValues = savedValuesDefault;
-		savedValues.crc = 	  savedValues.Kp_Id + 
-							savedValues.Ki_Id + 
-							savedValues.Kp_Iq + 
-							savedValues.Ki_Iq + 
+		savedValues.crc = 	savedValues.Kp + 
+							savedValues.Ki + 
 							savedValues.currentSensorAmpsPerVolt + 
 							savedValues.maxRegenPosition + 
 							savedValues.minRegenPosition + 
@@ -1789,16 +1505,12 @@ void MoveDataFromEEPromToRAM() {
 							savedValues.maxBatteryAmpsRegen + 
 							savedValues.maxMotorAmps + 
 							savedValues.maxMotorAmpsRegen + 
-							savedValues.prechargeTime;
+							savedValues.prechargeTime + 
+							savedValues.spares[0] + 
+							savedValues.spares[1]; 
 	}
-
-	savedValues2.spares[0] = 0;
-	savedValues2.spares[1] = 0;
-	savedValues2.spares[2] = 0;
-	savedValues2.spares[3] = 0;
-
 	if (EEDataInRam3[15] == CRC3) {
-		savedValues2.rotorTimeConstantArrayIndex = EEDataInRam3[0];		// 
+		savedValues2.rotorTimeConstantIndex = EEDataInRam3[0];		// 
 		savedValues2.numberOfPolePairs = EEDataInRam3[1];						// 
 		savedValues2.maxRPM = EEDataInRam3[2];		// 
 		savedValues2.throttleType = EEDataInRam3[3];
@@ -1806,11 +1518,17 @@ void MoveDataFromEEPromToRAM() {
 		savedValues2.statorResistance_times1024 = EEDataInRam3[5];
 		savedValues2.statorInductance_times1024 = EEDataInRam3[6];
 		savedValues2.packVoltage = EEDataInRam3[7];
-		savedValues2.sensorless = EEDataInRam3[8];
+		savedValues2.rotorInductance_times1024 = EEDataInRam3[8];
+		savedValues2.useFineRotorInductance = EEDataInRam3[9];
+		savedValues2.sensorless = EEDataInRam3[10];
+		savedValues2.dataToDisplaySet1 = EEDataInRam3[11];
+		savedValues2.dataToDisplaySet2 = EEDataInRam3[12];
+		savedValues2.spares[0] = EEDataInRam3[13];
+		savedValues2.spares[1] = EEDataInRam3[14];
 		savedValues2.crc = EEDataInRam3[15];					// 
 	}
 	else if (EEDataInRam4[15] == CRC4) {
-		savedValues2.rotorTimeConstantArrayIndex = EEDataInRam4[0];		// 
+		savedValues2.rotorTimeConstantIndex = EEDataInRam4[0];		// 
 		savedValues2.numberOfPolePairs = EEDataInRam4[1];						// 
 		savedValues2.maxRPM = EEDataInRam4[2];		// 
 		savedValues2.throttleType = EEDataInRam4[3];
@@ -1818,12 +1536,18 @@ void MoveDataFromEEPromToRAM() {
 		savedValues2.statorResistance_times1024 = EEDataInRam4[5];
 		savedValues2.statorInductance_times1024 = EEDataInRam4[6];
 		savedValues2.packVoltage = EEDataInRam4[7];
-		savedValues2.sensorless = EEDataInRam4[8];
+		savedValues2.rotorInductance_times1024 = EEDataInRam4[8];
+		savedValues2.useFineRotorInductance = EEDataInRam4[9];
+		savedValues2.sensorless = EEDataInRam4[10];
+		savedValues2.dataToDisplaySet1 = EEDataInRam4[11];
+		savedValues2.dataToDisplaySet2 = EEDataInRam4[12];
+		savedValues2.spares[0] = EEDataInRam4[13];
+		savedValues2.spares[1] = EEDataInRam4[14];
 		savedValues2.crc = EEDataInRam4[15];					// 
 	}
 	else {	// There wasn't a single good copy.  Load the default configuration.
 		savedValues2 = savedValuesDefault2;
-		savedValues2.crc =  savedValues2.rotorTimeConstantArrayIndex + 
+		savedValues2.crc =  savedValues2.rotorTimeConstantIndex + 
 							savedValues2.numberOfPolePairs + 
 							savedValues2.maxRPM + 
 							savedValues2.throttleType +
@@ -1831,7 +1555,13 @@ void MoveDataFromEEPromToRAM() {
 							savedValues2.statorResistance_times1024+
 							savedValues2.statorInductance_times1024 + 
 							savedValues2.packVoltage + 
-							savedValues2.sensorless;
+							savedValues2.rotorInductance_times1024 + 
+							savedValues2.useFineRotorInductance + 
+							savedValues2.sensorless + 
+							savedValues2.dataToDisplaySet1 + 
+							savedValues2.dataToDisplaySet2 + 
+							savedValues2.spares[0] + 
+							savedValues2.spares[1]; 
 	}
 }
 
@@ -1857,8 +1587,8 @@ void InitializeThrottleAndCurrentVariables() {
 	//
 	//
 	//
-	int ADTicksPerAmp_times128 = 0;
-	long totalADTicks_times128 = 0;
+	static volatile int ADTicksPerAmp_times128 = 0;
+	static volatile long totalADTicks_times128 = 0;
 
 	//ADTicksPerAmp_times128 = 128 * (1024/5) / currentSensorAmpsPerVolt; // 1024 A/D ticks per 5v.
 	//ADTicksPerAmp_times128 = 26214 / currentSensorAmpsPerVolt;
@@ -1901,6 +1631,65 @@ void InitializeThrottleAndCurrentVariables() {
 	// I'm usually converting to amps*8 to increase resolution a bit, so the scale factor is actually currentSensorAmpsPerVolt * 5/2048.  So, do the multiply here, and save the shift for later.
 }
 
+void GrabDataSnapshot() {
+	static volatile int delta = 0;
+	static volatile int offset = 0;
+	static volatile int i = 0;
+
+	myDataStream.Id_times10 = Id;
+	myDataStream.Iq_times10 = Iq;
+	myDataStream.IdRef_times10 = IdRef;
+	myDataStream.IqRef_times10 = IqRef;
+	myDataStream.Vd = Vd;
+	myDataStream.Vq = Vq;
+	myDataStream.Ia_times10 = Ia;
+	myDataStream.Ib_times10 = Ib;
+	myDataStream.Ic_times10 = Ic;
+	myDataStream.Va = Va;
+	myDataStream.Vb = Vb;
+	myDataStream.Vc = Vc;
+	myDataStream.rawThrottle = rawThrottle;
+	myDataStream.throttle = throttle;
+	myDataStream.temperature = temperatureBasePlate;
+	myDataStream.slipSpeedRPM = slipSpeedRPS_times16;
+	myDataStream.electricalSpeedRPM = rotorFluxRPS_times16; // revolutions per 16 seconds for the rotor flux.
+	myDataStream.mechanicalSpeedRPM = RPS_times16; // REVOLUTIONS PER 16 SECONDS.
+	myDataStream.batteryAmps_times10 = batteryCurrentNormalized; // in the range of [-4096, 4096], where 4096 corresponds to 3.75v on the AD feedback, and -4096 corresponds to 1.25v.  Later convert that to amps.
+
+
+	myDataStream.slipSpeedRPM = __builtin_mulss(15,myDataStream.slipSpeedRPM) >> 2;
+	myDataStream.mechanicalSpeedRPM = __builtin_mulss(15,myDataStream.mechanicalSpeedRPM) >> 2;
+	myDataStream.electricalSpeedRPM = __builtin_mulss(15,myDataStream.electricalSpeedRPM) >> 2;
+	myDataStream.batteryAmps_times10 = __builtin_mulss(myDataStream.batteryAmps_times10*5, currentSensorAmpsPerVoltTimes5) >> 13;  // [-4096, 4096] -> [-amps*10, amps*10].  To go from 4096 to amps*10, do 10 * x ticks * currentSensorAmpsPerVolt * 1.25 volts / 4096 ticks.
+	myDataStream.Ia_times10 = __builtin_mulss(myDataStream.Ia_times10*5, currentSensorAmpsPerVoltTimes5) >> 13;  // [-4096, 4096] -> [-amps*10, amps*10].  To go from 4096 to amps*10, do 10 * x ticks * currentSensorAmpsPerVolt * 1.25 volts / 4096 ticks.
+	myDataStream.Ib_times10 = __builtin_mulss(myDataStream.Ib_times10*5, currentSensorAmpsPerVoltTimes5) >> 13;  // [-4096, 4096] -> [-amps*10, amps*10].  To go from 4096 to amps*10, do 10 * x ticks * currentSensorAmpsPerVolt * 1.25 volts / 4096 ticks.
+	myDataStream.Ic_times10 = __builtin_mulss(myDataStream.Ic_times10*5, currentSensorAmpsPerVoltTimes5) >> 13;  // [-4096, 4096] -> [-amps*10, amps*10].  To go from 4096 to amps*10, do 10 * x ticks * currentSensorAmpsPerVolt * 1.25 volts / 4096 ticks.
+	myDataStream.IdRef_times10 = __builtin_mulss(myDataStream.IdRef_times10*5, currentSensorAmpsPerVoltTimes5) >> 13;  // [-4096, 4096] -> [-amps*10, amps*10].  To go from 4096 to amps*10, do 10 * x ticks * currentSensorAmpsPerVolt * 1.25 volts / 4096 ticks.
+	myDataStream.IqRef_times10 = __builtin_mulss(myDataStream.IqRef_times10*5, currentSensorAmpsPerVoltTimes5) >> 13;  // [-4096, 4096] -> [-amps*10, amps*10].  To go from 4096 to amps*10, do 10 * x ticks * currentSensorAmpsPerVolt * 1.25 volts / 4096 ticks.
+	myDataStream.Id_times10 = __builtin_mulss(myDataStream.Id_times10*5, currentSensorAmpsPerVoltTimes5) >> 13;  // [-4096, 4096] -> [-amps*10, amps*10].  To go from 4096 to amps*10, do 10 * x ticks * currentSensorAmpsPerVolt * 1.25 volts / 4096 ticks.
+	myDataStream.Iq_times10 = __builtin_mulss(myDataStream.Iq_times10*5, currentSensorAmpsPerVoltTimes5) >> 13;  // [-4096, 4096] -> [-amps*10, amps*10].  To go from 4096 to amps*10, do 10 * x ticks * currentSensorAmpsPerVolt * 1.25 volts / 4096 ticks.
+// How to convert from Va to real volts?  I think just divide by 1690 and multiply by batterypackvoltage?  1690 is the max radius.
+	myDataStream.Vd = __builtin_divsd(__builtin_mulss(myDataStream.Vd, savedValues2.packVoltage), R_MAX);
+	myDataStream.Vq = __builtin_divsd(__builtin_mulss(myDataStream.Vq, savedValues2.packVoltage), R_MAX);
+	myDataStream.Va = __builtin_divsd(__builtin_mulss(myDataStream.Va, savedValues2.packVoltage), R_MAX);
+	myDataStream.Vb = __builtin_divsd(__builtin_mulss(myDataStream.Vb, savedValues2.packVoltage), R_MAX);
+	myDataStream.Vc = __builtin_divsd(__builtin_mulss(myDataStream.Vc, savedValues2.packVoltage), R_MAX);
+	myDataStream.percentOfVoltageDiskBeingUsed = __builtin_divsd(__builtin_mulss(100,rGlobal_filtered), R_MAX);
+	myDataStream.temperature = __builtin_divsd(4812800L,myDataStream.temperature) - 5700;  // convert to the variable resisance value. 16077 
+	delta = 32;
+	offset = 64;
+	for (i = 0; i < 6; i++) {
+		if (myDataStream.temperature >= celciusToResistance[offset-1]) {
+			offset = offset - delta;
+		}
+		else if (myDataStream.temperature < celciusToResistance[offset-1]) {
+			offset = offset + delta;
+		}
+		delta >>= 1;
+	}
+	myDataStream.temperature = offset;
+	myDataStream.timer = counter1k - myDataStream.startTime;
+}
 
 //RCON
 void __attribute__ ((__interrupt__,auto_psv)) _MathError(void) {
@@ -1917,7 +1706,154 @@ void __attribute__ ((__interrupt__,auto_psv)) _OscillatorFail(void) {
 }
 
 
+//int __arctan(int numerator, int denominator);
+
+//volatile unsigned int LrLmSquared_times128;  // Lr / Lm^2.  rotor inductance / (mutual inductance^2).  One data point:  Leeson Motor rotor inductance = 0.12117H.  Mutual Inductance = 0.11215.  Stator Inductance = 0.129930H
+									// Lm / Ls = 0.866.  Is that related to the motor efficiency?  I'm going to assume yes.  So, I"m going to use Lr / (sqrt(3)/2 * sqrt(3)/2 * Lr*Lr) = 4/3 * 1/Lr as a guess.  A correction for voltage, current, and radian units is required.
+
+/*	if (savedValues2.sensorless == 1) {
+		if (startUp == 1) {
+			if (RPS_times16 < 300) {
+				rotorFluxAnglePlus90 = ((rotorFluxAngle + 128) & 511);  // To advance 90 degrees on a scale of 0 to 511, you add 128, 
+																// and then do "& 511" to make it wrap around if overflow occurred.
+				cos_theta_times32768 = _sin_times32768[rotorFluxAnglePlus90];  // 
+				sin_theta_times32768 = _sin_times32768[rotorFluxAngle];  // 
+			}
+			else {
+				startUp = 0;
+			}
+		}
+		else {
+
+//			rotorFluxAnglePlus90 = ((rotorFluxAngle + 128) & 511);  // To advance 90 degrees on a scale of 0 to 511, you add 128, 
+															// and then do "& 511" to make it wrap around if overflow occurred.
+//			cos_theta_times32768 = _sin_times32768[rotorFluxAnglePlus90];  // 
+//			sin_theta_times32768 = _sin_times32768[rotorFluxAngle];  // 			
+			rotorFluxAnglePlus90 = ((rotorFluxAngleSensorless + 128) & 511);  // To advance 90 degrees on a scale of 0 to 511, you add 128, 
+															// and then do "& 511" to make it wrap around if overflow occurred.
+			cos_theta_times32768 = _sin_times32768[rotorFluxAnglePlus90];  // 
+			sin_theta_times32768 = _sin_times32768[rotorFluxAngleSensorless];  // 			
+		}
+	}
+	else {
+*/
+
+
+
+// ComputeRotorFluxSpeedSensorless();
 /*
+volatile int v_alpha_volts_times8 = 0;
+volatile int v_beta_volts_times8 = 0;
+volatile int di_alpha_dt_times8 = 0;
+volatile int di_beta_dt_times8 = 0;
+
+
+volatile int i_alpha_amps_times8_old10 = 0;//i_alpha_amps_times8_old9;
+volatile int i_alpha_amps_times8_old9 = 0;//i_alpha_amps_times8_old8;
+volatile int i_alpha_amps_times8_old8 = 0;//i_alpha_amps_times8_old7;
+volatile int i_alpha_amps_times8_old7 = 0;//i_alpha_amps_times8_old6;
+volatile int i_alpha_amps_times8_old6 = 0;//i_alpha_amps_times8_old5;
+volatile int i_alpha_amps_times8_old5 = 0; // i_alpha_amps_times8_old4;
+volatile int i_alpha_amps_times8_old4 = 0; // i_alpha_amps_times8_old3;
+volatile int i_alpha_amps_times8_old3 = 0; // i_alpha_amps_times8_old2;
+volatile int i_alpha_amps_times8_old2 = 0; // i_alpha_amps_times8_old1;
+volatile int i_alpha_amps_times8_old1 = 0; // i_alpha_amps_times8;
+volatile int i_alpha_amps_times8 = 0; // __builtin_mulss((int)currentSensorAmpsPerVoltTimes5, (int)i_alpha) >> 11;
+
+volatile int temp = 0; // 0;
+
+volatile int i_beta_amps_times8_old10 = 0; // i_beta_amps_times8_old9;
+volatile int i_beta_amps_times8_old9 = 0; // i_beta_amps_times8_old8;
+volatile int i_beta_amps_times8_old8 = 0; // i_beta_amps_times8_old7;
+volatile int i_beta_amps_times8_old7 = 0; // i_beta_amps_times8_old6;
+volatile int i_beta_amps_times8_old6 = 0; // i_beta_amps_times8_old5;
+volatile int i_beta_amps_times8_old5 = 0; // i_beta_amps_times8_old4;
+volatile int i_beta_amps_times8_old4 = 0; // i_beta_amps_times8_old3;
+volatile int i_beta_amps_times8_old3 = 0; // i_beta_amps_times8_old2;
+volatile int i_beta_amps_times8_old2 = 0; // i_beta_amps_times8_old1;
+volatile int i_beta_amps_times8_old1 = 0; // i_beta_amps_times8;
+volatile int i_beta_amps_times8 = 0; // __builtin_mulss((int)currentSensorAmpsPerVoltTimes5, (int)i_beta) >> 11;
+
+
+
+volatile int BEMFAngleSensorless = 1;
+volatile int rotorFluxAngleSensorless = 1;
+volatile int oldRotorFluxAngleSensorless = 1; 		//
+
+volatile int positiveRotation = 0;
+
+volatile long Ed_times8_times65536 = 0L;
+volatile int Ed_times8_filtered = 0L;
+volatile long Eq_times8_times65536 = 0L;
+volatile int Eq_times8_filtered = 0L;
+
+volatile long tempLongAlpha = 0L;
+volatile long tempLongBeta = 0L;
+volatile long tempLongEdEq = 0L;
+
+volatile long temp1 = 0;
+volatile long temp2 = 0;
+volatile long temp3 = 0;
+volatile long temp4 = 0;
+
+volatile int magnitudeIAlpha_times8 = 0;
+volatile int magnitudeIBeta_times8 = 0;
+volatile int magnitudeVAlpha_times8 = 0;
+volatile int magnitudeVBeta_times8 = 0;
+volatile int E_alpha_times8 = 0;
+volatile int E_beta_times8 = 0;
+volatile int Ed_times8 = 0;
+volatile int Eq_times8 = 0;
+volatile int theta = 0;
+volatile int thetaPlus90 = 0;
+volatile int i_alpha_amps_times8_filtered = 0;
+volatile long i_alpha_amps_times8_filtered_times65536 = 0L;
+volatile int i_alpha_amps_times8_filtered_corrected = 0;
+volatile int i_beta_amps_times8_filtered = 0;
+volatile long i_beta_amps_times8_filtered_times65536 = 0L;
+volatile int i_beta_amps_times8_filtered_corrected = 0;
+volatile int v_alpha_volts_times8_filtered = 0;
+volatile long v_alpha_volts_times8_filtered_times65536 = 0L;
+
+volatile int v_alpha_volts_times8_filtered_corrected = 0;
+volatile int v_beta_volts_times8_filtered = 0;
+volatile long v_beta_volts_times8_filtered_times65536 = 0L;
+
+volatile int v_beta_volts_times8_filtered_corrected = 0;
+volatile long int di_alpha_dt_times8_filtered_corrected = 0;
+volatile long int di_beta_dt_times8_filtered_corrected = 0;
+volatile int periodIBeta_div_2 = 10000;  // just a guess for the startup period.
+volatile int periodIAlpha_div_2 = 10000;
+volatile int periodVBeta_div_2 = 10000;
+volatile int periodVAlpha_div_2 = 10000;
+volatile int localMaxCandidateIAlpha = 0;
+volatile int localMinCandidateIAlpha = 0;
+volatile int localMaxCandidateIBeta = 0;
+volatile int localMinCandidateIBeta = 0;
+volatile int localMaxCandidateVBeta = 0;
+volatile int localMinCandidateVBeta = 0;
+volatile int localMaxCandidateVAlpha = 0;
+volatile int localMinCandidateVAlpha = 0;
+volatile int tIAlpha = 0;
+volatile int tIBeta = 0;
+volatile int tVAlpha = 0;
+volatile int tVBeta = 0;
+volatile int shiftCorrection = 0;
+volatile int correctionIndex = 0;
+volatile char stateIAlpha = 0;
+volatile char stateIBeta = 0;
+volatile char stateVAlpha = 0;
+volatile char stateVBeta = 0;
+volatile int derivativeScale = 0;
+
+volatile int magnitudeCorrection_times1024 = 0;
+volatile int tempIAlpha = 0;
+volatile int tempIBeta = 0;
+volatile int tempVAlpha = 0;
+volatile int tempVBeta = 0;
+*/
+// END OF ComputeRotorFluxSpeedSensorless(); VARIABLES /////////////////////////////
+
 // The index into this array is a number from 0 to 1792, inclusive.  Ex:  the arctan of 0.172 is:  __arcTan_theta_0_122[round(0.172*128)] = __arctan_theta_0_122[22] = 14 "degrees".  It will tell you the angle from 0 to 122, where there are 512 "degrees" in the circle.
 // 1792/128 = 14, which was already covered in the lookup table __arctan_theta_122_127[14], but a little overlap won't hurt anything.
 // 122, 123, ..., 128 are covered as a separate special case.
