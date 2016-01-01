@@ -500,6 +500,10 @@ void __attribute__ ((__interrupt__,auto_psv)) _ADCInterrupt(void) {
 			temperatureMultiplier = 8;	// Allow full throttle.
 		}
 		IqRefRef = __builtin_mulss(throttle,temperatureMultiplier) >> 3;
+		if (RPS_times16 < 8) {  // if less than 0.5 rev per second, make sure there's no regen.
+			if (IqRefRef < 0) IqRefRef = 0;
+		}
+
 		IdRefRef = IqRefRef;
 		if (IdRefRef < 0) IdRefRef = -IdRefRef;
 	}
