@@ -1,7 +1,7 @@
 #include "UART.h"
 
 void ShowMenu(void);
-void ShowConfig(unsigned int mask);
+void ShowConfig();
 void u16x_to_str(char *str, unsigned val, unsigned char digits);
 void u16_to_str(char *str, unsigned val, unsigned char digits);
 void int16_to_str(char *str, int val, unsigned char digits);
@@ -11,6 +11,8 @@ void FetchRTData(void);
 extern void InitPIStruct(void);
 extern void EESaveValues(void);
 extern void InitializeThrottleAndCurrentVariables(void);
+extern void TurnOffADAndPWM();
+extern void InitADAndPWM();
 
 
 volatile UARTCommand myUARTCommand = {0,0,{0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0},0};
@@ -27,7 +29,7 @@ extern unsigned int revCounterMax;
 extern volatile unsigned int counter10k;
 extern volatile unsigned int counter1k;
 extern volatile piType myPI;
-extern volatile rotorType myRotor;
+extern volatile rotorTestType myRotorTest;
 
 volatile dataStream myDataStream;
 
@@ -115,21 +117,36 @@ void ProcessCommand(void) {
 				break;
 			}
 		}
+		if (!strcmp((const char *)&myUARTCommand.string[0], "save")) {
+			TurnOffADAndPWM();
+			EESaveValues();
+			InitADAndPWM();
+		}		
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "motor-type")) {
+			if (myUARTCommand.number == 1) {
+				TurnOffADAndPWM();
+				savedValues.motorType = AC_INDUCTION_MOTOR;
+				InitADAndPWM();
+			}
+			else if (myUARTCommand.number == 2) {
+				TurnOffADAndPWM();
+				savedValues.motorType = PERMANENT_MAGNET_AC_MOTOR;
+				InitADAndPWM();
+			}
+		}
 		// Let's say you typed the command "kp 1035".  The following would have happened:
 		// myUARTCommand.string[] would contain only the text portion of the command, and is terminated with a 0.  string[] = {'p',0,?,?,?,?,?,?,?,?,?,?,?,...}
 		// Also, myUARTCommand.number = the number argument after the command. So, number = 1035.
-		if (!strcmp((char *)&myUARTCommand.string[0], "kp")) {
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "kp")) {
 			if (myUARTCommand.number <= 32767u && myUARTCommand.number > 0) {
 				savedValues.Kp = (int)(myUARTCommand.number); 
 				InitPIStruct();
-	//			ShowConfig((unsigned)1 << 0);
 			}
 		}
-		else if (!strcmp((char *)&myUARTCommand.string[0], "ki")){ 
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "ki")){ 
 			if (myUARTCommand.number <= 32767u && myUARTCommand.number > 0) {
 				savedValues.Ki = (int)(myUARTCommand.number); 
 				InitPIStruct();
-	//			ShowConfig((unsigned)1 << 0);
 			}
 		}
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "current-sensor-amps-per-volt")) {  // 
@@ -195,7 +212,7 @@ void ProcessCommand(void) {
 		// NOW WE ARE ON SavedValues2...
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "rotor-time-constant")) { 
 			if (myUARTCommand.number <= ROTOR_TIME_CONSTANT_ARRAY_SIZE+5 && myUARTCommand.number >= 5) {
-				myRotor.timeConstantIndex = savedValues2.rotorTimeConstantIndex = (int)(myUARTCommand.number-5);
+				myRotorTest.timeConstantIndex = savedValues2.rotorTimeConstantIndex = (int)(myUARTCommand.number-5);
 			}
 		}
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "pole-pairs")) {
@@ -217,22 +234,8 @@ void ProcessCommand(void) {
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "encoder-ticks")) {
 			if (myUARTCommand.number <= 5000u && myUARTCommand.number >= 64) {
 				savedValues2.encoderTicks = (int)(myUARTCommand.number); 
-				revCounterMax = 160000L / (4*savedValues2.encoderTicks);  // 4* because I'm doing 4 times resolution for the encoder. 160,000 because revolutions per 16 seconds is computed as:  16*10,000*poscnt * rev/(maxPosCnt*revcounter*(16sec)
-			}
-		}
-	//	else if (!strcmp((const char *)&myUARTCommand.string[0], "stator-resistance")) {  // times1024.  So basically mOhms.
-	//		if (myUARTCommand.number > 0) {
-	//			savedValues2.statorResistance_times1024 = (int)(myUARTCommand.number);
-	//		}
-	//	}
-	//	else if (!strcmp((const char *)&myUARTCommand.string[0], "stator-inductance")) {  // times1024.  So basically mHenries.
-	//		if (myUARTCommand.number > 0) {
-	//			savedValues2.statorInductance_times1024 = (int)(myUARTCommand.number);
-	//		}
-	//	}
-		else if (!strcmp((const char *)&myUARTCommand.string[0], "pack-voltage")) {  // units are volts.
-			if (myUARTCommand.number < 1000 && myUARTCommand.number > 0) {
-				savedValues2.packVoltage = (int)(myUARTCommand.number); 
+				revCounterMax = (unsigned)(160000L / (4*savedValues2.encoderTicks));  // 4* because I'm doing 4 times resolution for the encoder. 160,000 because revolutions per 16 seconds is computed as:  16*10,000*poscnt * rev/(maxPosCnt*revcounter*(16sec)
+				// revCounterMax may only be of use for the induction motor.
 			}
 		}
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "pi-ratio")) {
@@ -240,25 +243,11 @@ void ProcessCommand(void) {
 				myPI.ratioKpKi = (int)(myUARTCommand.number); 
 			}
 		}
-	//	else if (!strcmp((const char *)&myUARTCommand.string[0], "rotor-inductance")) {
-	//		if (myUARTCommand.number <= MAX_ROTOR_INDUCTANCE && myUARTCommand.number >= MIN_ROTOR_INDUCTANCE) {
-	//			savedValues2.rotorInductance_times1024 = (int)(myUARTCommand.number);
-				//LrLmSquared_times128 = LrLmSquared_times128Array[savedValues2.rotorInductance_times1024 - MIN_ROTOR_INDUCTANCE]; 
-	//		}
-	//	}
-	//	else if (!strcmp((const char *)&myUARTCommand.string[0], "sensorless")) {
-	//		if (myUARTCommand.number == 1) {
-	//			savedValues2.sensorless = 1;
-	//		}
-	//		else {
-	//			savedValues2.sensorless = 0;
-	//		}
-	//	}
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "run-pi-test")) {
 			myDataStream.period = 0;  // stop the data stream during this test.
 	
-			myRotor.testRunning = 0;
-			myRotor.testFinished = 0;
+			myRotorTest.testRunning = 0;
+			myRotorTest.testFinished = 0;
 	
 			myPI.testRunning = 1;
 			myPI.testFailed = 1;	
@@ -274,15 +263,31 @@ void ProcessCommand(void) {
 			myPI.testFailed = 1;	
 			myPI.testFinished = 0;
 	
-			myRotor.startTime = counter10k;
-			myRotor.timeConstantIndex = 0;	// always start at zero, and then it will increment up to around 145, giving each rotorTimeConstant candidate 5 seconds to spin the motor the best it can.
-			myRotor.testRunning = 1;
-			myRotor.testFinished = 0;
-			myRotor.maxTestSpeed = 0;
-			myRotor.bestTimeConstantIndex = 0;
+			myRotorTest.startTime = counter10k;
+			myRotorTest.timeConstantIndex = 0;	// always start at zero, and then it will increment up to around 145, giving each rotorTimeConstant candidate 5 seconds to spin the motor the best it can.
+			myRotorTest.testRunning = 1;
+			myRotorTest.testFinished = 0;
+			myRotorTest.maxTestSpeed = 0;
+			myRotorTest.bestTimeConstantIndex = 0;
 		}
+/*
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "run-angle-offset-test")) {
+			myDataStream.period = 0;  // stop the data stream during this test.
+			myPI.testRunning = 0;
+			myPI.testFailed = 1;	
+			myPI.testFinished = 0;
+	
+			myRotorTest.startTime = counter10k;
+			myRotorTest.timeConstantIndex = 0;	// always start at zero, and then it will increment up to around 145, giving each rotorTimeConstant candidate 5 seconds to spin the motor the best it can.
+			myRotorTest.testRunning = 1;
+			myRotorTest.testFinished = 0;
+			myRotorTest.maxTestSpeed = 0;
+			myRotorTest.bestTimeConstantIndex = 0;
+		}
+*/
 		else if ((!strcmp((const char *)&myUARTCommand.string[0], "config")) || (!strcmp((const char *)&myUARTCommand.string[0], "settings"))) {
-			ShowConfig(0x0FFFF);
+			ShowConfig();
+
 		}
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "data-stream-period")) {  // in milliseconds
 			if (myUARTCommand.number > 0) {
@@ -328,12 +333,6 @@ void ProcessCommand(void) {
 				if (savedValues2.dataToDisplaySet1 & 2048) {
 					TransmitString("IqRef,");
 				}
-				if (savedValues2.dataToDisplaySet1 & 1024) {
-					TransmitString("Vd,");
-				}
-				if (savedValues2.dataToDisplaySet1 & 512) {
-					TransmitString("Vq,");
-				}
 				if (savedValues2.dataToDisplaySet1 & 256) {
 					TransmitString("Ia,");
 				}
@@ -342,15 +341,6 @@ void ProcessCommand(void) {
 				}
 				if (savedValues2.dataToDisplaySet1 & 64) {
 					TransmitString("Ic,");
-				}
-				if (savedValues2.dataToDisplaySet1 & 32) {
-					TransmitString("Va,");
-				}
-				if (savedValues2.dataToDisplaySet1 & 16) {
-					TransmitString("Vb,");
-				}
-				if (savedValues2.dataToDisplaySet1 & 8) {
-					TransmitString("Vc,");
 				}
 				if (savedValues2.dataToDisplaySet1 & 4) {
 					TransmitString("percentVolts,");
@@ -424,22 +414,6 @@ void ProcessCommand(void) {
 				savedValues2.dataToDisplaySet1 &= ~2048;
 			}
 		}
-		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-vd")) {  // in milliseconds
-			if (myUARTCommand.number == 1) {
-				savedValues2.dataToDisplaySet1 |= 1024;
-			}
-			else {
-				savedValues2.dataToDisplaySet1 &= ~1024;
-			}
-		}
-		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-vq")) {  // in milliseconds
-			if (myUARTCommand.number == 1) {
-				savedValues2.dataToDisplaySet1 |= 512;
-			}
-			else {
-				savedValues2.dataToDisplaySet1 &= ~512;
-			}
-		}
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-ia")) {  // in milliseconds
 			if (myUARTCommand.number == 1) {
 				savedValues2.dataToDisplaySet1 |= 256;
@@ -462,30 +436,6 @@ void ProcessCommand(void) {
 			}
 			else {
 				savedValues2.dataToDisplaySet1 &= ~64;
-			}
-		}
-		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-va")) {  // in milliseconds
-			if (myUARTCommand.number == 1) {
-				savedValues2.dataToDisplaySet1 |= 32;
-			}
-			else {
-				savedValues2.dataToDisplaySet1 &= ~32;
-			}
-		}
-		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-vb")) {  // in milliseconds
-			if (myUARTCommand.number == 1) {
-				savedValues2.dataToDisplaySet1 |= 16;
-			}
-			else {
-				savedValues2.dataToDisplaySet1 &= ~16;
-			}
-		}
-		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-vc")) {  // in milliseconds
-			if (myUARTCommand.number == 1) {
-				savedValues2.dataToDisplaySet1 |= 8;
-			}
-			else {
-				savedValues2.dataToDisplaySet1 &= ~8;
 			}
 		}
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-percent-volts")) {  // in milliseconds
@@ -553,10 +503,10 @@ void ProcessCommand(void) {
 			}
 		}
 		else if (myUARTCommand.string[0] == 0) {  // A carriage return.
-			if (myRotor.testRunning) {  // Stop the rotor test if it was running, and just keep the best value of the rotor time constant that you had found up to this point.
-				savedValues2.rotorTimeConstantIndex = myRotor.bestTimeConstantIndex;
-				myRotor.testRunning = 0;
-				myRotor.testFinished = 1;
+			if (myRotorTest.testRunning) {  // Stop the rotor test if it was running, and just keep the best value of the rotor time constant that you had found up to this point.
+				savedValues2.rotorTimeConstantIndex = myRotorTest.bestTimeConstantIndex;
+				myRotorTest.testRunning = 0;
+				myRotorTest.testFinished = 1;
 				IdRefRef = 0;
 				IqRefRef = 0;
 			}
@@ -599,6 +549,8 @@ void ProcessCommand(void) {
 		}
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "?")) {  // show the valid list of commands
 			TransmitString("List of valid commands:\r\n");
+			TransmitString("save\r\n");
+			TransmitString("motor-type xxx (1 means induction, 2 means permanent magnet)\r\n");
 			TransmitString("kp xxx (range 0-32767)\r\n");
 			TransmitString("ki xxx (range 0-32767)\r\n");
 			TransmitString("current-sensor-amps-per-volt xxx (range 0-480)\r\n");
@@ -617,10 +569,10 @@ void ProcessCommand(void) {
 			TransmitString("max-rpm xxx (range 0-32767)\r\n");
 			TransmitString("throttle-type xxx (range 0-1)\r\n");
 			TransmitString("encoder-ticks xxx (range 64-5000)\r\n");
-			TransmitString("pack-voltage xxx (range 0-999)\r\n");
 			TransmitString("pi-ratio xxx (range 50-1000.  pi-ratio = Kp/Ki)\r\n");
 			TransmitString("run-pi-test\r\n");
 			TransmitString("run-rotor-test\r\n");
+			TransmitString("run-angle-offset-test xxx (range 0-511)\r\n");			
 			TransmitString("config\r\n");
 			TransmitString("data-stream-period xxx (range 0-32767)\r\n");
 			TransmitString("data\r\n");
@@ -629,14 +581,9 @@ void ProcessCommand(void) {
 			TransmitString("stream-iq xxx (range 0-1)\r\n");
 			TransmitString("stream-idref xxx (range 0-1)\r\n");
 			TransmitString("stream-iqref xxx (range 0-1)\r\n");
-			TransmitString("stream-vd xxx (range 0-1)\r\n");
-			TransmitString("stream-vq xxx (range 0-1)\r\n");
 			TransmitString("stream-ia xxx (range 0-1)\r\n");
 			TransmitString("stream-ib xxx (range 0-1)\r\n");
 			TransmitString("stream-ic xxx (range 0-1)\r\n");
-			TransmitString("stream-va xxx (range 0-1)\r\n");
-			TransmitString("stream-vb xxx (range 0-1)\r\n");
-			TransmitString("stream-vc xxx (range 0-1)\r\n");
 			TransmitString("stream-percent-volts xxx (range 0-1)\r\n");
 			TransmitString("stream-battery-amps xxx (range 0-1)\r\n");
 			TransmitString("stream-raw-throttle xxx (range 0-1)\r\n");
@@ -658,42 +605,41 @@ void ProcessCommand(void) {
 	}
 }
 
-void ShowConfig(unsigned int mask) {
+void ShowConfig() {
+	// 0         1         2         3         4         5
+	// 012345678901234567890123456789012345678901234567890123456789
+	// motor-type=x\r\n
+		strcpy(showConfigString,"motor-type=x\r\n");
+		u16_to_str(&showConfigString[11], savedValues.motorType, 1);	
+		TransmitString(showConfigString);
 	// 0         1         2         3         4         5
 	// 012345678901234567890123456789012345678901234567890123456789
 	// kp=xxxxx ki=xxxxx\r\n
-	if (mask & ((unsigned)1 << 0)) {
 		strcpy(showConfigString,"kp=xxxxx ki=xxxxx\r\n");
 		u16_to_str(&showConfigString[3], savedValues.Kp, 5);	
 		u16_to_str(&showConfigString[12], savedValues.Ki, 5);
 		TransmitString(showConfigString);
-	}
 	// 0         1         2         3         4         5
 	// 012345678901234567890123456789012345678901234567890123456789
 	// current-sensor-amps-per-volt=xxxx\r\n;
-	if (mask & ((unsigned)1 << 5)) {
 		strcpy(showConfigString,"current-sensor-amps-per-volt=xxxx\r\n");
 		u16_to_str(&showConfigString[29], savedValues.currentSensorAmpsPerVolt, 4);
 		TransmitString(showConfigString);
-	}
 	// 0         1         2         3         4         5         6         7         8
 	// 01234567890123456789012345678901234567890123456789012345678901234567890123456789012345
 	// max-regen-position=xxxx\r\n
 	// min-regen-position=xxxx\r\n 
-	if (mask & ((unsigned)1 << 1)) {
 		strcpy(showConfigString,"max-regen-position=xxxx\r\n");
 		u16_to_str(&showConfigString[19], savedValues.maxRegenPosition, 4);
 		TransmitString(showConfigString);
 		strcpy(showConfigString,"min-regen-position=xxxx\r\n");
 		u16_to_str(&showConfigString[19], savedValues.minRegenPosition, 4);
 		TransmitString(showConfigString);
-	}
 	// 0         1         2         3         4         5         6         7         8
 	// 01234567890123456789012345678901234567890123456789012345678901234567890123456789012345
 	// min-throttle-position=xxxx\r\n
 	// max-throttle-position=xxxx\r\n 
 	// fault-throttle-position=xxxx\r\n
-	if (mask & ((unsigned)1<<2)) {
 		strcpy(showConfigString,"min-throttle-position=xxxx\r\n");
 		u16_to_str(&showConfigString[22], savedValues.minThrottlePosition, 4);
 		TransmitString(showConfigString);
@@ -705,12 +651,10 @@ void ShowConfig(unsigned int mask) {
 		strcpy(showConfigString,"fault-throttle-position=xxxx\r\n");
 		u16_to_str(&showConfigString[24], savedValues.throttleFaultPosition, 4);
 		TransmitString(showConfigString);
-	}
 	// 0         1         2         3         4         5         6         7         8
 	// 01234567890123456789012345678901234567890123456789012345678901234567890123456789012345
 	// max-battery-amps=xxxx amps\r\n
 	// max-battery-amps-regen=xxxx amps\r\n
-	if (mask & ((unsigned)1<<3)) {
 		strcpy(showConfigString,"max-battery-amps=xxxz amps\r\n");
 		u16_to_str(&showConfigString[17], savedValues.maxBatteryAmps, 4);
 		TransmitString(showConfigString);
@@ -718,12 +662,10 @@ void ShowConfig(unsigned int mask) {
 		strcpy(showConfigString,"max-battery-amps-regen=xzxx amps\r\n");
 		u16_to_str(&showConfigString[23], savedValues.maxBatteryAmpsRegen, 4);
 		TransmitString(showConfigString);
-	}
 	// 0         1         2         3         4         5
 	// 012345678901234567890123456789012345678901234567890123456789
 	// max-motor-amps=xxx amps\r\n
 	// max-motor-amps-regen=xxx amps\r\n
-	if (mask & ((unsigned)1 << 4)) {
 		strcpy(showConfigString,"max-motor-amps=xxx amps\r\n");
 		u16_to_str(&showConfigString[15], savedValues.maxMotorAmps, 3);
 		TransmitString(showConfigString);
@@ -731,120 +673,63 @@ void ShowConfig(unsigned int mask) {
 		strcpy(showConfigString,"max-motor-amps-regen=xxx amps\r\n");
 		u16_to_str(&showConfigString[21], savedValues.maxMotorAmpsRegen, 3);
 		TransmitString(showConfigString);
-	}
-
 	// 0         1         2         3         4         5
 	// 012345678901234567890123456789012345678901234567890123456789
 	// precharge-time=xxxx tenths of a sec\r\n
-	if (mask & ((unsigned)1 << 6)) {
 		strcpy(showConfigString,"precharge-time=xxxx tenths of a sec\r\n");
 		u16_to_str(&showConfigString[15], savedValues.prechargeTime, 4);
 		TransmitString(showConfigString);
-	}
-
 
 	// **NOW WE ARE IN SavedValues2**
 	// 0         1         2         3         4         5
 	// 012345678901234567890123456789012345678901234567890123456789
 	// rotor-time-constant=xxx ms\r\n
 	//
-	if (mask & ((unsigned)1 << 8)) {
 		strcpy(showConfigString,"rotor-time-constant=xxx ms\r\n");
 		u16_to_str(&showConfigString[20], savedValues2.rotorTimeConstantIndex+5, 3);  // for display purposes, add 5 so it's millisec.
 		TransmitString(showConfigString);
-	}
 	// 0         1         2         3         4         5
 	// 012345678901234567890123456789012345678901234567890123456789
 	// pole-pairs=xxx\r\n
 	//
-	if (mask & ((unsigned)1 << 9)) {
 		strcpy(showConfigString,"pole-pairs=xxx\r\n");
 		u16_to_str(&showConfigString[11], savedValues2.numberOfPolePairs, 3);  
 		TransmitString(showConfigString);
-	}
 	// 0         1         2         3         4         5
 	// 012345678901234567890123456789012345678901234567890123456789
 	// max-rpm=xxxxx rev/min\r\n
 	//
-	if (mask & ((unsigned)1 << 9)) {
 		strcpy(showConfigString,"max-rpm=xxxxx rev/min\r\n");
 		u16_to_str(&showConfigString[8], savedValues2.maxRPM, 5);  
 		TransmitString(showConfigString);
-	}
 	// 0         1         2         3         4         5
 	// 012345678901234567890123456789012345678901234567890123456789
 	// throttle-type=x\r\n
 	//
-	if (mask & ((unsigned)1 << 9)) {
 		strcpy(showConfigString,"throttle-type=x\r\n");
 		u16_to_str(&showConfigString[14], savedValues2.throttleType, 1);  
 		TransmitString(showConfigString);
-	}
 	// 0         1         2         3         4         5
 	// 012345678901234567890123456789012345678901234567890123456789
 	// encoder-ticks=xxxx ticks/rev\r\n
 	//
-	if (mask & ((unsigned)1 << 9)) {
 		strcpy(showConfigString,"encoder-ticks=xxxx ticks/rev\r\n");
 		u16_to_str(&showConfigString[14], savedValues2.encoderTicks, 4);  
 		TransmitString(showConfigString);
-	}
-	// 0         1         2         3         4         5
-	// 012345678901234567890123456789012345678901234567890123456789
-	// stator-resistance=xxxxx mOhm\r\n
-	//
-	if (mask & ((unsigned)1 << 9)) {
-		strcpy(showConfigString,"stator-resistance=xxxxx mOhm\r\n");
-		u16_to_str(&showConfigString[18], savedValues2.statorResistance_times1024, 5);  // ADCBUF1 is the raw throttle.
-		TransmitString(showConfigString);
-	}
-	// 0         1         2         3         4         5
-	// 012345678901234567890123456789012345678901234567890123456789
-	// stator-inductance=xxxxx mHenry\r\n
-	//
-	if (mask & ((unsigned)1 << 9)) {
-		strcpy(showConfigString,"stator-inductance=xxxxx mHenry\r\n");
-		u16_to_str(&showConfigString[18], savedValues2.statorInductance_times1024, 5);  // ADCBUF1 is the raw throttle.
-		TransmitString(showConfigString);
-	}
-	// 0         1         2         3         4         5
-	// 012345678901234567890123456789012345678901234567890123456789
-	// sensorless=x (1 means true)\r\n
-	//
-	if (mask & ((unsigned)1 << 9)) {
-		strcpy(showConfigString,"sensorless=x (1 means true)\r\n");
-		u16_to_str(&showConfigString[11], savedValues2.sensorless, 1);  // ADCBUF1 is the raw throttle.  +5 because 5mH is in index 0.
-		TransmitString(showConfigString);
-	}
-
-	// 0         1         2         3         4         5
-	// 012345678901234567890123456789012345678901234567890123456789
-	// pack-voltage=xxx volts\r\n
-	//
-	if (mask & ((unsigned)1 << 9)) {
-		strcpy(showConfigString,"pack-voltage=xxx volts\r\n");
-		u16_to_str(&showConfigString[13], savedValues2.packVoltage, 3);  // ADCBUF1 is the raw throttle.
-		TransmitString(showConfigString);
-	}
 	// 0         1         2         3         4         5
 	// 012345678901234567890123456789012345678901234567890123456789
 	// pi-ratio=xxx\r\n
 	//
-	if (mask & ((unsigned)1 << 8)) {
 		strcpy(showConfigString,"pi-ratio=xxx\r\n");
 		u16_to_str(&showConfigString[9], myPI.ratioKpKi, 3);  // ADCBUF1 is the raw throttle.
 		TransmitString(showConfigString);
-	}
-
 	// 0         1         2         3         4         5
 	// 012345678901234567890123456789012345678901234567890123456789
 	// raw-throttle=xxxx\r\n
 	//
-	if (mask & ((unsigned)1 << 7)) {
 		strcpy(showConfigString,"raw-throttle=xxxx\r\n");
 		u16_to_str(&showConfigString[13], ADCBUF1, 4);  // ADCBUF1 is the raw throttle.
 		TransmitString(showConfigString);
-	}
 }
 
 // Input is an integer from 0 to 15.  Output is a character in '0', '1', '2', ..., '9', 'a','b','c','d','e','f'
