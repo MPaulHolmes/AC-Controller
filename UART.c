@@ -8,6 +8,8 @@ void int16_to_str(char *str, int val, unsigned char digits);
 int TransmitString(const char* str);
 char IntToCharHex(unsigned int i);
 void FetchRTData(void);
+void StopAllMotorTests(void);
+
 extern void InitPIStruct(void);
 extern void EESaveValues(void);
 extern void InitializeThrottleAndCurrentVariables(void);
@@ -25,11 +27,13 @@ extern volatile unsigned int faultBits;
 extern volatile SavedValuesStruct savedValues;
 extern volatile SavedValuesStruct2 savedValues2;
 extern unsigned int revCounterMax;
-	
+extern volatile unsigned int poscnt;	
 extern volatile unsigned int counter10k;
 extern volatile unsigned int counter1k;
 extern volatile piType myPI;
 extern volatile rotorTestType myRotorTest;
+extern volatile angleOffsetTestType myAngleOffsetTest;
+
 
 volatile dataStream myDataStream;
 
@@ -90,6 +94,7 @@ void __attribute__((__interrupt__, auto_psv)) _U2RXInterrupt(void) {
 void ProcessCommand(void) {
 	static int i = 0;
 	if (echoNewChar) {
+		StopAllMotorTests();		// also, stop the motor tests.
 		while (echoNewChar) {
 			if (U2STAbits.UTXBF == 0) { // TransmitReady();
 				U2TXREG = newChar; 	// SendCharacter(newChar);
@@ -130,7 +135,12 @@ void ProcessCommand(void) {
 			}
 			else if (myUARTCommand.number == 2) {
 				TurnOffADAndPWM();
-				savedValues.motorType = PERMANENT_MAGNET_AC_MOTOR;
+				savedValues.motorType = PERMANENT_MAGNET_AC_MOTOR_WITH_ENCODER;
+				InitADAndPWM();
+			}
+			else if (myUARTCommand.number == 3) {
+				TurnOffADAndPWM();
+				savedValues.motorType = PERMANENT_MAGNET_AC_MOTOR_WITH_RESOLVER;
 				InitADAndPWM();
 			}
 		}
@@ -147,6 +157,12 @@ void ProcessCommand(void) {
 			if (myUARTCommand.number <= 32767u && myUARTCommand.number > 0) {
 				savedValues.Ki = (int)(myUARTCommand.number); 
 				InitPIStruct();
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "angle-offset")){ 
+			if (myUARTCommand.number <= 511 && myUARTCommand.number > 0) {
+				savedValues2.angleOffset = (unsigned int)(myUARTCommand.number); 	// this one is the extra for displaying on the screen.
+				myAngleOffsetTest.currentAngleOffset = savedValues2.angleOffset;  	// this is the working copy.
 			}
 		}
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "current-sensor-amps-per-volt")) {  // 
@@ -244,11 +260,6 @@ void ProcessCommand(void) {
 			}
 		}
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "run-pi-test")) {
-			myDataStream.period = 0;  // stop the data stream during this test.
-	
-			myRotorTest.testRunning = 0;
-			myRotorTest.testFinished = 0;
-	
 			myPI.testRunning = 1;
 			myPI.testFailed = 1;	
 			myPI.testFinished = 0;
@@ -258,36 +269,36 @@ void ProcessCommand(void) {
 			myPI.Ki = 1;
 		}
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "run-rotor-test")) {
-			myDataStream.period = 0;  // stop the data stream during this test.
-			myPI.testRunning = 0;
-			myPI.testFailed = 1;	
-			myPI.testFinished = 0;
-	
-			myRotorTest.startTime = counter10k;
-			myRotorTest.timeConstantIndex = 0;	// always start at zero, and then it will increment up to around 145, giving each rotorTimeConstant candidate 5 seconds to spin the motor the best it can.
-			myRotorTest.testRunning = 1;
-			myRotorTest.testFinished = 0;
-			myRotorTest.maxTestSpeed = 0;
-			myRotorTest.bestTimeConstantIndex = 0;
+			if (savedValues.motorType == 1) {		
+				myRotorTest.startTime = counter10k;
+				myRotorTest.timeConstantIndex = 0;	// always start at zero, and then it will increment up to around 145, giving each rotorTimeConstant candidate 5 seconds to spin the motor the best it can.
+				myRotorTest.testRunning = 1;
+				myRotorTest.testFinished = 0;
+				myRotorTest.maxTestSpeed = 0;
+				myRotorTest.bestTimeConstantIndex = 0;
+			}
+			else {
+				TransmitString("Your motor type is currently set to permanent magnet.  This test is for an AC induction motor!\r\n");
+				TransmitString("To change your motor to AC induction, the command is 'motor-type 1'\r\n");
+			}
 		}
-/*
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "run-angle-offset-test")) {
-			myDataStream.period = 0;  // stop the data stream during this test.
-			myPI.testRunning = 0;
-			myPI.testFailed = 1;	
-			myPI.testFinished = 0;
-	
-			myRotorTest.startTime = counter10k;
-			myRotorTest.timeConstantIndex = 0;	// always start at zero, and then it will increment up to around 145, giving each rotorTimeConstant candidate 5 seconds to spin the motor the best it can.
-			myRotorTest.testRunning = 1;
-			myRotorTest.testFinished = 0;
-			myRotorTest.maxTestSpeed = 0;
-			myRotorTest.bestTimeConstantIndex = 0;
+			if (savedValues.motorType >= 2) {		
+				myAngleOffsetTest.startTime = counter10k;
+				myAngleOffsetTest.currentAngleOffset = 0;	// always start at zero, and then it will increment up to 511, giving each angle candidate 1 second to spin the motor the best it can.
+				myAngleOffsetTest.testRunning = 1;
+				myAngleOffsetTest.testFinished = 0;
+				myAngleOffsetTest.maxTestSpeed = 0;
+				myAngleOffsetTest.bestAngleOffset = 0;
+			}
+			else {
+				TransmitString("Your motor type is AC induction.  This test is for a permanent maget AC motor!\r\n");
+				TransmitString("To change your motor to permanent maget, the command is 'motor-type 2'\r\n");
+			}
 		}
-*/
+
 		else if ((!strcmp((const char *)&myUARTCommand.string[0], "config")) || (!strcmp((const char *)&myUARTCommand.string[0], "settings"))) {
 			ShowConfig();
-
 		}
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "data-stream-period")) {  // in milliseconds
 			if (myUARTCommand.number > 0) {
@@ -316,7 +327,8 @@ void ProcessCommand(void) {
 		// bit 12 set: display myDataStream.slipSpeedRPM
 		// Bit 11 set: display myDataStream.electricalSpeedRPM
 		// bit 10 set: display myDataStream.mechanicalSpeedRPM
-		// Bit 9-0 set: future use. 
+		// bit 9 set:  display poscnt, which is a saved copy of the encoder ticks.  It's just a way to debug the encoder, to make sure it's working.
+		// Bit 8-0 set: future use. 
 	
 				if (savedValues2.dataToDisplaySet1 & 32768) {
 					TransmitString("time,");
@@ -365,6 +377,9 @@ void ProcessCommand(void) {
 				}
 				if (savedValues2.dataToDisplaySet2 & 1024) {
 					TransmitString("mechanicalSpeed,");
+				}
+				if (savedValues2.dataToDisplaySet2 & 512) {
+					TransmitString("poscnt,");
 				}
 				TransmitString("\r\n");
 				myDataStream.startTime = counter1k;
@@ -502,6 +517,15 @@ void ProcessCommand(void) {
 				savedValues2.dataToDisplaySet2 &= ~1024;
 			}
 		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "stream-poscnt")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				savedValues2.dataToDisplaySet2 |= 512;
+			}
+			else {
+				savedValues2.dataToDisplaySet2 &= ~512;
+			}
+		}
+
 		else if (myUARTCommand.string[0] == 0) {  // A carriage return.
 			if (myRotorTest.testRunning) {  // Stop the rotor test if it was running, and just keep the best value of the rotor time constant that you had found up to this point.
 				savedValues2.rotorTimeConstantIndex = myRotorTest.bestTimeConstantIndex;
@@ -514,10 +538,21 @@ void ProcessCommand(void) {
 				myPI.testRunning = 0;
 				myPI.testFailed = 1;
 				myPI.testFinished = 1;
+				IdRefRef = 0;
+				IqRefRef = 0;
 			}
-			myDataStream.period = 0;  // Stop the data stream if it was running.
+			if (myAngleOffsetTest.testRunning) {  // Stop the rotor test if it was running, and just keep the best value of the rotor time constant that you had found up to this point.
+				savedValues2.angleOffset = myAngleOffsetTest.bestAngleOffset;
+				myAngleOffsetTest.testRunning = 0;
+				myAngleOffsetTest.testFinished = 1;
+				IdRefRef = 0;
+				IqRefRef = 0;
+			}
+			myDataStream.period = 0;  // Stop the data stream if it was running.  I already do this any time a key is hit, so this is redundant.
 			// if the PI test is running, terminate it.
 			// if the rotor test is running, stop and use the current best rotorTimeConstant that has been found so far.
+			// if the angle offset test is running, stop and use the current best angle offset that has been found so far.
+
 			ShowMenu();
 		}
 		else if (!strcmp((const char*)&myUARTCommand.string[0], "2")) {
@@ -572,7 +607,7 @@ void ProcessCommand(void) {
 			TransmitString("pi-ratio xxx (range 50-1000.  pi-ratio = Kp/Ki)\r\n");
 			TransmitString("run-pi-test\r\n");
 			TransmitString("run-rotor-test\r\n");
-			TransmitString("run-angle-offset-test xxx (range 0-511)\r\n");			
+			TransmitString("run-angle-offset-test\r\n");			
 			TransmitString("config\r\n");
 			TransmitString("data-stream-period xxx (range 0-32767)\r\n");
 			TransmitString("data\r\n");
@@ -592,6 +627,7 @@ void ProcessCommand(void) {
 			TransmitString("stream-slip-speed xxx (range 0-1)\r\n");
 			TransmitString("stream-electrical-speed xxx (range 0-1)\r\n");
 			TransmitString("stream-mechanical-speed xxx (range 0-1)\r\n");
+			TransmitString("stream-poscnt xxx (range 0-1)\r\n");
 			TransmitString("<carriage return> (this stops the data stream)\r\n");
 		}
 		else {
@@ -603,6 +639,17 @@ void ProcessCommand(void) {
 		myUARTCommand.number = 0;
 		myUARTCommand.complete = 0;  // You processed that command.  Dump it!  Do this last.  The ISR will only run through if the command is NOT yet complete (in other words, if complete == 0). 
 	}
+}
+
+void StopAllMotorTests() {
+	myDataStream.period = 0;  	// stop the data stream during this test.
+	myPI.testRunning = 0;	 	// stop the PI test if it's running
+	myPI.testFailed = 1;	
+	myPI.testFinished = 0;
+	myRotorTest.testRunning = 0;	// stop the rotor time constant search if there was one.
+	myRotorTest.testFinished = 0;
+	myAngleOffsetTest.testRunning = 0;	// stop the permanent magnet angle offset search if there was one.
+	myAngleOffsetTest.testFinished = 0;	
 }
 
 void ShowConfig() {
@@ -680,14 +727,26 @@ void ShowConfig() {
 		u16_to_str(&showConfigString[15], savedValues.prechargeTime, 4);
 		TransmitString(showConfigString);
 
+		if (savedValues.motorType == 1) {
 	// **NOW WE ARE IN SavedValues2**
 	// 0         1         2         3         4         5
 	// 012345678901234567890123456789012345678901234567890123456789
 	// rotor-time-constant=xxx ms\r\n
 	//
-		strcpy(showConfigString,"rotor-time-constant=xxx ms\r\n");
-		u16_to_str(&showConfigString[20], savedValues2.rotorTimeConstantIndex+5, 3);  // for display purposes, add 5 so it's millisec.
-		TransmitString(showConfigString);
+			strcpy(showConfigString,"rotor-time-constant=xxx ms\r\n");
+			u16_to_str(&showConfigString[20], savedValues2.rotorTimeConstantIndex+5, 3);  // for display purposes, add 5 so it's millisec.
+			TransmitString(showConfigString);
+		}
+		else {
+	// **NOW WE ARE IN SavedValues2**
+	// 0         1         2         3         4         5
+	// 012345678901234567890123456789012345678901234567890123456789
+	// angle-offset=xxx\r\n
+	//
+			strcpy(showConfigString,"angle-offset=xxx\r\n");
+			u16_to_str(&showConfigString[13], savedValues2.angleOffset, 3);  // for display purposes, add 5 so it's millisec.
+			TransmitString(showConfigString);			
+		}
 	// 0         1         2         3         4         5
 	// 012345678901234567890123456789012345678901234567890123456789
 	// pole-pairs=xxx\r\n
@@ -852,7 +911,8 @@ void StreamData() {
 	// bit 12 set: display myDataStream.slipSpeedRPM
 	// Bit 11 set: display myDataStream.electricalSpeedRPM
 	// bit 10 set: display myDataStream.mechanicalSpeedRPM
-	// Bit 9-0 set: future use. 
+	// bit 9 set: display poscnt
+	// Bit 8-0 set: future use. 
 
 	if (savedValues2.dataToDisplaySet1 & 32768) {
 		u16_to_str((char *)&intString[0], myDataStream.timer, 5); // intString[] = "00345".  Now, add a comma and null terminate it.
@@ -904,18 +964,18 @@ void StreamData() {
 		intString[7] = 0; // null terminate it.					
 		TransmitString((char *)&intString[0]);
 	}
-	if (savedValues2.dataToDisplaySet1 & 1024) {
-		int16_to_str((char *)&intString[0], myDataStream.Vd, 3);	 // ex: intString[] = "+087"
-		intString[4] = ','; // it is on 4 rather than 3 because there is a + or - as the first character of the string, since it's an int.
-		intString[5] = 0; // null terminate it.					
-		TransmitString((char *)&intString[0]);
-	}
-	if (savedValues2.dataToDisplaySet1 & 512) {
-		int16_to_str((char *)&intString[0], myDataStream.Vq, 3);	 // ex: intString[] = "+087"
-		intString[4] = ','; // it is on 4 rather than 3 because there is a + or - as the first character of the string, since it's an int.
-		intString[5] = 0; // null terminate it.					
-		TransmitString((char *)&intString[0]);
-	}
+//	if (savedValues2.dataToDisplaySet1 & 1024) {
+//		int16_to_str((char *)&intString[0], myDataStream.Vd, 3);	 // ex: intString[] = "+087"
+//		intString[4] = ','; // it is on 4 rather than 3 because there is a + or - as the first character of the string, since it's an int.
+//		intString[5] = 0; // null terminate it.					
+//		TransmitString((char *)&intString[0]);
+//	}
+//	if (savedValues2.dataToDisplaySet1 & 512) {
+//		int16_to_str((char *)&intString[0], myDataStream.Vq, 3);	 // ex: intString[] = "+087"
+//		intString[4] = ','; // it is on 4 rather than 3 because there is a + or - as the first character of the string, since it's an int.
+//		intString[5] = 0; // null terminate it.					
+//		TransmitString((char *)&intString[0]);
+//	}
 	if (savedValues2.dataToDisplaySet1 & 256) {
 		temp = abs(myDataStream.Ia_times10);
 		tenths = temp % 10;
@@ -949,24 +1009,24 @@ void StreamData() {
 		intString[7] = 0; // null terminate it.					
 		TransmitString((char *)&intString[0]);
 	}
-	if (savedValues2.dataToDisplaySet1 & 32) {
-		int16_to_str((char *)&intString[0], myDataStream.Va, 3);	 // ex: intString[] = "+087"
-		intString[4] = ','; // it is on 4 rather than 3 because there is a + or - as the first character of the string, since it's an int.
-		intString[5] = 0; // null terminate it.					
-		TransmitString((char *)&intString[0]);
-	}
-	if (savedValues2.dataToDisplaySet1 & 16) {
-		int16_to_str((char *)&intString[0], myDataStream.Vb, 3);	 // ex: intString[] = "+087"
-		intString[4] = ','; // it is on 4 rather than 3 because there is a + or - as the first character of the string, since it's an int.
-		intString[5] = 0; // null terminate it.					
-		TransmitString((char *)&intString[0]);
-	}
-	if (savedValues2.dataToDisplaySet1 & 8) {
-		int16_to_str((char *)&intString[0], myDataStream.Vc, 3);	 // ex: intString[] = "+087"
-		intString[4] = ','; // it is on 4 rather than 3 because there is a + or - as the first character of the string, since it's an int.
-		intString[5] = 0; // null terminate it.					
-		TransmitString((char *)&intString[0]);
-	}
+//	if (savedValues2.dataToDisplaySet1 & 32) {
+//		int16_to_str((char *)&intString[0], myDataStream.Va, 3);	 // ex: intString[] = "+087"
+//		intString[4] = ','; // it is on 4 rather than 3 because there is a + or - as the first character of the string, since it's an int.
+//		intString[5] = 0; // null terminate it.					
+//		TransmitString((char *)&intString[0]);
+//	}
+//	if (savedValues2.dataToDisplaySet1 & 16) {
+//		int16_to_str((char *)&intString[0], myDataStream.Vb, 3);	 // ex: intString[] = "+087"
+//		intString[4] = ','; // it is on 4 rather than 3 because there is a + or - as the first character of the string, since it's an int.
+//		intString[5] = 0; // null terminate it.					
+//		TransmitString((char *)&intString[0]);
+//	}
+//	if (savedValues2.dataToDisplaySet1 & 8) {
+//		int16_to_str((char *)&intString[0], myDataStream.Vc, 3);	 // ex: intString[] = "+087"
+//		intString[4] = ','; // it is on 4 rather than 3 because there is a + or - as the first character of the string, since it's an int.
+//		intString[5] = 0; // null terminate it.					
+//		TransmitString((char *)&intString[0]);
+//	}
 	if (savedValues2.dataToDisplaySet1 & 4) {
 		u16_to_str((char *)&intString[0], myDataStream.percentOfVoltageDiskBeingUsed, 3); // intString[] = "075".  Now, add a comma and null terminate it.
 		intString[3] = ',';
@@ -993,7 +1053,8 @@ void StreamData() {
 	// bit 12 set: display myDataStream.slipSpeedRPM
 	// Bit 11 set: display myDataStream.electricalSpeedRPM
 	// bit 10 set: display myDataStream.mechanicalSpeedRPM
-	// Bit  9-0 set: future use. 
+	// bit 9 set: display poscnt
+	// Bit 8-0 set: future use.
 
 	if (savedValues2.dataToDisplaySet2 & 32768) {
 		u16_to_str((char *)&intString[0], myDataStream.rawThrottle, 4); // intString[] = "0345".  Now, add a comma and null terminate it.
@@ -1031,5 +1092,12 @@ void StreamData() {
 		intString[7] = 0;	
 		TransmitString((char *)&intString[0]);
 	}
+	if (savedValues2.dataToDisplaySet2 & 512) {
+		u16_to_str((char *)&intString[0], POSCNT, 5); // intString[] = "03457".  Now, add a comma and null terminate it.
+		intString[5] = ',';
+		intString[6] = 0;	
+		TransmitString((char *)&intString[0]);
+	}
+
 	TransmitString("\r\n");
 }
