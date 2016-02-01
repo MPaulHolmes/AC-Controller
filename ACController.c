@@ -34,18 +34,18 @@ volatile SavedValuesStruct2 savedValues2 = {
 };
 #else
 const SavedValuesStruct savedValuesDefault = {
-	AC_INDUCTION_MOTOR,DEFAULT_KP,DEFAULT_KI,DEFAULT_CURRENT_SENSOR_AMPS_PER_VOLT,25,400,624,972,5,MAX_BATTERY_AMPS,MAX_BATTERY_AMPS_REGEN,MAX_MOTOR_AMPS,MAX_MOTOR_AMPS,DEFAULT_PRECHARGE_TIME,{0},0
+	DEFAULT_MOTOR_TYPE,DEFAULT_KP,DEFAULT_KI,DEFAULT_CURRENT_SENSOR_AMPS_PER_VOLT,25,400,624,972,5,MAX_BATTERY_AMPS,MAX_BATTERY_AMPS_REGEN,MAX_MOTOR_AMPS,MAX_MOTOR_AMPS,DEFAULT_PRECHARGE_TIME,{0},0
 };
 
 volatile SavedValuesStruct savedValues = {
-	AC_INDUCTION_MOTOR,DEFAULT_KP,DEFAULT_KI,DEFAULT_CURRENT_SENSOR_AMPS_PER_VOLT,25,400,624,972,5,MAX_BATTERY_AMPS,MAX_BATTERY_AMPS_REGEN,MAX_MOTOR_AMPS,MAX_MOTOR_AMPS,DEFAULT_PRECHARGE_TIME,{0},0
+	DEFAULT_MOTOR_TYPE,DEFAULT_KP,DEFAULT_KI,DEFAULT_CURRENT_SENSOR_AMPS_PER_VOLT,25,400,624,972,5,MAX_BATTERY_AMPS,MAX_BATTERY_AMPS_REGEN,MAX_MOTOR_AMPS,MAX_MOTOR_AMPS,DEFAULT_PRECHARGE_TIME,{0},0
 };
 
 const SavedValuesStruct2 savedValuesDefault2 = {
-	0, DEFAULT_ROTOR_TIME_CONSTANT_INDEX,DEFAULT_NUM_POLE_PAIRS,DEFAULT_MAX_MECHANICAL_RPM,DEFAULT_THROTTLE_TYPE, DEFAULT_ENCODER_TICKS,DEFAULT_DATA_TO_DISPLAY_SET1, DEFAULT_DATA_TO_DISPLAY_SET2,{0,0,0,0,0,0,0}, 0
+	DEFAULT_ANGLE_OFFSET, DEFAULT_ROTOR_TIME_CONSTANT_INDEX,DEFAULT_NUM_POLE_PAIRS,DEFAULT_MAX_MECHANICAL_RPM,DEFAULT_THROTTLE_TYPE, DEFAULT_ENCODER_TICKS,DEFAULT_DATA_TO_DISPLAY_SET1, DEFAULT_DATA_TO_DISPLAY_SET2,{0,0,0,0,0,0,0}, 0
 };
 volatile SavedValuesStruct2 savedValues2 = {
-	0, DEFAULT_ROTOR_TIME_CONSTANT_INDEX,DEFAULT_NUM_POLE_PAIRS,DEFAULT_MAX_MECHANICAL_RPM,DEFAULT_THROTTLE_TYPE, DEFAULT_ENCODER_TICKS,DEFAULT_DATA_TO_DISPLAY_SET1, DEFAULT_DATA_TO_DISPLAY_SET2,{0,0,0,0,0,0,0}, 0
+	DEFAULT_ANGLE_OFFSET, DEFAULT_ROTOR_TIME_CONSTANT_INDEX,DEFAULT_NUM_POLE_PAIRS,DEFAULT_MAX_MECHANICAL_RPM,DEFAULT_THROTTLE_TYPE, DEFAULT_ENCODER_TICKS,DEFAULT_DATA_TO_DISPLAY_SET1, DEFAULT_DATA_TO_DISPLAY_SET2,{0,0,0,0,0,0,0}, 0
 };
 
 #endif
@@ -138,6 +138,7 @@ const int _sin_times32768[] =
 
 
 volatile rotorTestType myRotorTest = {0,0,0,DEFAULT_ROTOR_TIME_CONSTANT_INDEX,0,0};
+volatile angleOffsetTestType myAngleOffsetTest = {0,0,0,0,0,0};
 volatile piType myPI;
 
 // in void ComputeRotorFluxAngle() {
@@ -323,7 +324,7 @@ int main() {
 				TransmitString("If you change your bus voltage, you should rerun the command 'run-pi-test'.\r\n");
 			}
 		}
-		if (myRotorTest.testFinished) {
+		else if (myRotorTest.testFinished) {
 			myRotorTest.testFinished = 0;
 			if (myRotorTest.maxTestSpeed < 32) { // it should be WAY  faster than this.
 				TransmitString("Your rotor test failed.\r\n");				
@@ -333,8 +334,27 @@ int main() {
 				TransmitString("To save the newly found rotor time constant, type 'save'.\r\n");
 			}
 		}
+		else if (myAngleOffsetTest.testFinished) {
+			myAngleOffsetTest.testFinished = 0;
+			if (myAngleOffsetTest.maxTestSpeed < 32) { // it should be WAY faster than this.
+				TransmitString("Your angle offset test failed.\r\n");				
+			}
+			else {
+				TransmitString("Your angle offset test was a success!  Type 'config' to see the new angle offset.\r\n");
+				TransmitString("To save the newly found angle offset, type 'save'.\r\n");
+			}
+		}
+
 		if (I_PORT_GLOBAL_FAULT == 0) {
-			faultBits |= GLOBAL_FAULT;
+			if (I_PORT_UNDERVOLTAGE_FAULT == 0) {
+				faultBits |= UNDERVOLTAGE_FAULT;
+			}
+//			for (i = 0; i < 10000; i++) {
+//				Delay1uS();
+//			}
+//			faultBits &= ~OVERCURRENT_FAULT;			
+//			if (((faultBits & UNDERVOLTAGE_FAULT) == 0) && ((faultBits & DESAT_FAULT) == 0))
+//				ClearFlipFlop();
 		}
 		if (faultBits & STARTUP_FAULT) {
 //			if (throttle == 0) { // Make sure throttle is zero before allowing things to start.
@@ -461,6 +481,7 @@ void __attribute__ ((__interrupt__,auto_psv)) _ADCInterrupt(void) {
 	else {
 		// permanent magnet AC motor mechanical speed computation.
 		// do this later.
+		
 	}
 		// CH0 corresponds to ADCBUF0. etc...
 	// CH0=AN7, CH1=AN0, CH2=AN1, CH3=AN2. 
@@ -539,11 +560,16 @@ void __attribute__ ((__interrupt__,auto_psv)) _ADCInterrupt(void) {
 			temperatureMultiplier = 8;	// Allow full throttle.
 		}
 		IqRefRef = __builtin_mulss(throttle,temperatureMultiplier) >> 3;
-		if (RPS_times16 < 8) {  // if less than 0.5 rev per second, make sure there's no regen.
-			if (IqRefRef < 0) IqRefRef = 0;
+//		if (RPS_times16 < 8) {  // if less than 0.5 rev per second, make sure there's no regen.
+//			if (IqRefRef < 0) IqRefRef = 0;
+//		}
+		if (savedValues.motorType >= 2) { // 2 & 3 are permanent magnet types.  1 is induction.
+			IdRefRef = 0;
 		}
-		IdRefRef = IqRefRef;
-		if (IdRefRef < 0) IdRefRef = -IdRefRef;
+		else {
+			IdRefRef = IqRefRef;
+			if (IdRefRef < 0) IdRefRef = -IdRefRef;
+		}
 	}
 	/////////////////////////////////////////////////////////////////////////////////////////////////
 	// Keep battery amps in [-savedValues.maxBatteryAmpsRegen, savedValues.maxBatteryAmps] //////////	
@@ -621,7 +647,7 @@ void __attribute__ ((__interrupt__,auto_psv)) _ADCInterrupt(void) {
 					myPI.iteration++;
 				}
 				else {
-					if (myPI.error_q < -80) {  // if it overshot the target by 80, move on to the next one.  We don't want overshoot.
+					if (myPI.error_q < -120/*-80*/) {  // if it overshot the target by 80, move on to the next one.  We don't want overshoot.
 						MoveToNextPIValues();
 					}
 					else if (myPI.error_q > IqRef + 200) {  //  IqRef is a constant 511.  If Iq swung to -200, that's bad.  Move on.  Iq shouldn't go below zero much.
@@ -630,7 +656,7 @@ void __attribute__ ((__interrupt__,auto_psv)) _ADCInterrupt(void) {
 					else if (myPI.zeroCrossingIndex == -1 && myPI.iteration > myPI.maxIterationsBeforeZeroCrossing) {  // myPI.zeroCrossingIndex == -1 means it hasn't crossed zero yet.
 						MoveToNextPIValues();  // CONVERGENCE TOO SLOW!!!  Move on!
 					}
-					else if (myPI.error_q > 80 && myPI.zeroCrossingIndex >= 0) {  // it already crossed zero, but now is way back up again.  This is oscillation.  move on!
+					else if (myPI.error_q > 120/*80*/ && myPI.zeroCrossingIndex >= 0) {  // it already crossed zero, but now is way back up again.  This is oscillation.  move on!
 						MoveToNextPIValues();
 					}
 					else {
@@ -654,7 +680,7 @@ void __attribute__ ((__interrupt__,auto_psv)) _ADCInterrupt(void) {
 				}
 			}
 		}
-		else if (myRotorTest.testRunning) {  // I need this to run for say, 5 seconds, and then record the RPM.
+		else if (myRotorTest.testRunning) {  // I need this to run for say, 2 seconds, and then record the RPM.
 			IdRefRef = 200;//20*ampToNormalizedMultiplier;
 			IqRefRef = 200;//*ampToNormalizedMultiplier;
 			//if (IdRef > 4095) IdRef = 4095;
@@ -675,29 +701,31 @@ void __attribute__ ((__interrupt__,auto_psv)) _ADCInterrupt(void) {
 				}
 			}
 		}
-/*		else if (myAngleOffsetTest.testRunning) {
-			IdRefRef = 200;
-			IqRefRef = 0;
-			if (counter10k - myAngleOffsetTest.startTime > 20000) {  // 2 second.
+		else if (myAngleOffsetTest.testRunning) {
+			IqRefRef = 500;//20*ampToNormalizedMultiplier;
+			IdRefRef = 0;//*ampToNormalizedMultiplier;
+			//if (IdRef > 4095) IdRef = 4095;
+			//if (IqRef > 4095) IqRef = 4095;
+			if (counter10k - myAngleOffsetTest.startTime > 1000) {  // 0.1 second.
 				myAngleOffsetTest.startTime = counter10k;
-				
-				if () {
-					myRotorTest.maxTestSpeed = RPS_times16; // save the best speed so far.
-					myRotorTest.bestTimeConstantIndex = myRotorTest.timeConstantIndex;
+//				if (RPS_times16 > myAngleOffsetTest.maxTestSpeed) {
+//					myAngleOffsetTest.maxTestSpeed = RPS_times16; // save the best mechanical speed so far.
+//					myAngleOffsetTest.bestAngleOffset = myAngleOffsetTest.currentAngleOffset;
+//				}
+				if (myAngleOffsetTest.currentAngleOffset < 511) {
+					myAngleOffsetTest.currentAngleOffset++;
+					savedValues2.angleOffset = myAngleOffsetTest.currentAngleOffset;
 				}
-				myRotorTest.timeConstantIndex++;
-				if (myRotorTest.timeConstantIndex >= MAX_ROTOR_TIME_CONSTANT_INDEX) {
-					savedValues2.rotorTimeConstantIndex = myRotorTest.bestTimeConstantIndex;
-					myRotorTest.testRunning = 0;
-					myRotorTest.testFinished = 1;
+				else {
+//					savedValues2.angleOffset = myAngleOffsetTest.bestAngleOffset;
+					myAngleOffsetTest.testRunning = 0;
+					myAngleOffsetTest.testFinished = 1;
 					IdRefRef = 0;
 					IqRefRef = 0;
 				}
-			}			
+			}
 		}
-*/
 	}
-
 	/////////////////////////////////////////////////////////////////////////////////////////////////
 	// PI Loop:
 	myPI.error_q = IqRef - Iq;
@@ -706,24 +734,24 @@ void __attribute__ ((__interrupt__,auto_psv)) _ADCInterrupt(void) {
 	myPI.errorSum_q += myPI.error_q - myPI.clampErrorVq;
 	myPI.errorSum_d += myPI.error_d - myPI.clampErrorVd;
 	
-	if (IdRef == 0) {
-		myPI.pwm_d = 0;
-		myPI.errorSum_d = 0;
-		myPI.error_d = 0;
-		myPI.clampErrorVd = 0;
-	}
-	else {
+//	if (IdRef == 0) {
+//		myPI.pwm_d = 0;
+//		myPI.errorSum_d = 0;
+//		myPI.error_d = 0;
+//		myPI.clampErrorVd = 0;
+//	}
+//	else {
 		myPI.pwm_d = (myPI.Kp * myPI.error_d) + (myPI.Ki*myPI.errorSum_d);
-	}
-	if (IqRef == 0) {
-		myPI.pwm_q = 0;
-		myPI.errorSum_q = 0;
-		myPI.error_q = 0;
-		myPI.clampErrorVq = 0;
-	}
-	else {
+//	}
+//	if (IqRef == 0) {
+//		myPI.pwm_q = 0;
+//		myPI.errorSum_q = 0;
+//		myPI.error_q = 0;
+//		myPI.clampErrorVq = 0;
+//	}
+//	else {
 		myPI.pwm_q = (myPI.Kp * myPI.error_q) + (myPI.Ki * myPI.errorSum_q);
-	}
+//	}
 
 	if (myPI.pwm_d > (MAX_VD_VQ << 13)) {
 		myPI.pwm_d = (MAX_VD_VQ << 13);
@@ -857,7 +885,7 @@ void InitPIStruct() {
 	myPI.ratioKpKi = 62; //savedValues2.ratioKpKi;
 	myPI.zeroCrossingIndex = -1; // initialize to -1.
 	myPI.iteration = 0; // how many times have you run the PI loop with the same Kp and Ki?  This is used in the PI auto loop tuning.
-	myPI.maxIterationsBeforeZeroCrossing = 20;
+	myPI.maxIterationsBeforeZeroCrossing = 20; //20
 	myPI.previousTestCompletionTime = counter10k;
 }
 
@@ -869,6 +897,7 @@ void ComputeRotorFluxAngle() {
 	static volatile long magnetizingCurrentFine = 0L;
 	static volatile int magnetizingCurrent = 0;
 	static volatile unsigned long tempLong = 0UL;
+	static volatile unsigned int temp = 0;
 
 //;	 Physical form of equations:
 //;  Magnetizing current (amps):
@@ -891,19 +920,29 @@ void ComputeRotorFluxAngle() {
 //      rotorTimeConstantArray[]'s entries have been scaled up by 2^18 to give more resolution for the rotor time constant.  I scaled by 18, because that allowed incrementing rotor time constant by 0.01 seconds.
 //	magnetizingCurrent += ((rotorTimeConstantArray1[myRotorTest.rotorTimeConstantIndex] * (Id - magnetizingCurrent))) >> 18;
 ///////////////////////////////////////////////////////////////////////////
-	if (savedValues.motorType == PERMANENT_MAGNET_AC_MOTOR) {
-		// To find permanentMagnetRotorFluxAngleOffset (in units of [0, 512 "degrees"), NOT encoder ticks!!!!) the first time the motor is run, manually twist the motor post enough so that there has been at least one index pulse.  Then, run the motor.  But let Id = SOME CONSTANT, and Iq = 0.
-		// Now, start with angleOffset of 0, then let the motor try to run for a couple seconds.  The angle that corresponds NO MOVEMENT is the offset you want. Save it to EEProm, and we are done.
-		// Once the motor no longer spins, POSCNT is the ideal offset from index for rotorFluxAngleOffset.  There are 'n' POSCNT values that would work in [0, NUM_ENCODER_TICKS*4], where 'n' is the number of pole pairs.
+
+	if (savedValues.motorType == PERMANENT_MAGNET_AC_MOTOR_WITH_ENCODER) {
+		// To find angleOffset (in units of [0, 512 "degrees"), NOT encoder ticks!!!!) the first time the motor is run, manually twist the motor post enough so that there has been at least one index pulse.  Then, run the motor, trying all different offsets to see what spins it the fastest.
+		// There are 'n' POSCNT values that would work in [0, NUM_ENCODER_TICKS*4], where 'n' is the number of pole pairs.
 		// POSCNT is in [0, NUM_ENCODER_TICKS*4].  An index pulse resets POSCNT back to zero, or to MAX_POS_CNT if counting down.
-		// Let's say the number of pole pairs is 
 		// 
-		rotorFluxAngle = POSCNT;
-		poscnt = rotorFluxAngle;			// save the poscnt for debugging purposes.  It would be nice to know the encoder was working!
-		tempLong = __builtin_muluu((unsigned int)rotorFluxAngle,(unsigned int)savedValues2.numberOfPolePairs) << 7; // max encoder ticks is 4096, max pole pairs is 128.  Well, the product of max encoder ticks and number of pole pairs must be 4096*128, since (4096*4)*128*512 = 2^32.  
-		rotorFluxAngle = __builtin_divud((unsigned long)tempLong, (unsigned int)savedValues2.encoderTicks);
-		rotorFluxAngle += savedValues2.permanentMagnetRotorFluxAngleOffset;
-		rotorFluxAngle &= 511;
+//		rotorFluxAngle = POSCNT;
+//		poscnt = rotorFluxAngle;			// save the poscnt for debugging purposes.  It would be nice to know the encoder was working!
+//		tempLong = __builtin_muluu((unsigned int)rotorFluxAngle,(unsigned int)savedValues2.numberOfPolePairs) << 7; // max encoder ticks is 4096, max pole pairs is 128.  Well, the product of max encoder ticks and number of pole pairs must be 4096*128, since (4096*4)*128*512 = 2^32.  
+//		rotorFluxAngle = __builtin_divud((unsigned long)tempLong, (unsigned int)savedValues2.encoderTicks);
+//		rotorFluxAngle += myAngleOffsetTest.currentAngleOffset;
+//		rotorFluxAngle &= 511;
+//		return;
+	}
+	else if (savedValues.motorType == PERMANENT_MAGNET_AC_MOTOR_WITH_RESOLVER) {
+//		rotorFluxAngle = POSCNT;			
+		temp = POSCNT;			// it will be in [0,512).  It's my resolver to encoder board, so I ought to know!!!  haha.
+		// Now, I'm using 512 electrical "degrees" per electrical revolution so as to standardize all encoders that may be used, so let's shift it down to [0, 511], so we are dealing with the same units.
+//		rotorFluxAngle >>= 2;	// now it is in [0,511] electrical "degrees".
+		temp += myAngleOffsetTest.currentAngleOffset; 	// currentAngleOffset was found back when the motor had to be configured.  It is in units of [0,511] electrical "degrees". 
+		temp &= 511;		// Now, rotorFluxAngle is once again inside [0,511].
+		rotorFluxAngle = temp;
+				// There are NUM_POLE_PAIRS index pulses per mechanical revolution when using the resolver to encoder board.
 		return;
 	}
 	magCurrChange = __builtin_mulus((unsigned int)rotorTimeConstantArray1[myRotorTest.timeConstantIndex], (int)(Id - magnetizingCurrent));
@@ -1151,6 +1190,9 @@ void SpaceVectorModulation() {
 	PDC1 = pdc1;
 	PDC2 = pdc2;
 	PDC3 = pdc3;
+//	PDC1 = 1000;
+//	PDC2 = 1000;
+//	PDC3 = 1000;
 }
 
 void ClearAllFaults() {
@@ -1456,24 +1498,24 @@ void InitADAndPWM() {
 							// Use this for the AC controller.  It's easier to measure speed of rotor with this setting, if there's no INDEX signal on the encoder.
 		POSCNT = 0;  // How many ticks have gone by so far?  Starts out as zero anyway.  It's safe to write to it though.
 	}
-	else if (savedValues.motorType == PERMANENT_MAGNET_AC_MOTOR) {
-		QEICONbits.QEIM = 0b110; 	// enable QEI x4 mode with position counter reset by INDEX pulse.  
+	else {
+		QEICONbits.QEIM = 0b100; 	// enable QEI x2 mode with position counter reset by INDEX pulse.  
 		QEICONbits.PCDOUT = 1; 	 	// Position Counter Direction Status Output Enable (QEI logic controls state of I/O pin)
 		QEICONbits.POSRES = 1;		// Position counter is reset by index pulse.
 		QEICONbits.SWPAB = 0;		// don't swap QEA and QEB inputs.
 	
 		DFLTCONbits.CEID = 1; 		// Interrupts due to position count errors disabled
 		DFLTCONbits.QEOUT = 1; 		// Digital filter outputs enabled.  QEA, QEB. 0 means normal pin operation.
-		DFLTCONbits.QECK = 0b011; 	// clock prescaler of 16. So, QEA or QEB must be high or low for a time of 16*3 Tcy's. 
-									// Fcy = 30MHz.  3*16Tcy is the minimum pulse width required for QEA or QEB to change from high to low or low to high.
-									// You can do at most 30,000,000/(3*16) = 625,000 of those pulses per second.  So, you can have at most
-									// 625,000 * 4 clock counts per second, since resolution has been multiplied by 4 (QEA and QEB up and down transitions all cause a pulse to be seen by the microcontroller..)  
+		DFLTCONbits.QECK = 0b011; 	// clock prescaler of 2. So, QEA or QEB must be high or low for a time of 2*3 Tcy's. 
+									// Fcy = 30MHz.  3*2Tcy is the minimum pulse width required for QEA or QEB to change from high to low or low to high.
+									// You can do at most 30,000,000/(3*2) = ??? of those pulses per second.  So, you can have at most
+									// ??? * 2 clock counts per second, since resolution has been multiplied by 2 (QEA and QEB up and down transitions all cause a pulse to be seen by the microcontroller..)  
 									//  That means the maximum detectable RPM is:
-									// x rev/sec * 2096 clockCounts/Rev = 625,000 * 4 clockCounts/sec.  ASSUMING A 512 tick per revolution encoder like I"m using...
-									// So, x = 1220 rev/sec.
+									// x rev/sec * 2096 clockCounts/Rev = ??? * 2 clockCounts/sec.  ASSUMING A 1024 tick per revolution encoder like I"m using...
+									// So, x = xxx??? rev/sec.
 									// 
-		DFLTCONbits.IMV = 0b00;  	// INDEX pulse happens when QEA & QEB is low. 
-		MAXCNT = (savedValues2.encoderTicks << 2) - 1; 	// If going backwards, poscnt will go from 0 to maxcnt.
+		DFLTCONbits.IMV = 0b01;  	// INDEX pulse MUST happen when QEA is HIGH. It didn't work for QEA being low with the Leaf motor.
+		MAXCNT = (savedValues2.encoderTicks << 1) - 1; 	// If going backwards, poscnt will go from 0 to maxcnt.
 							// Use this for the AC controller.  It's easier to measure speed of rotor with this setting, if there's no INDEX signal on the encoder.
 		POSCNT = 0;  	// It statts in an unknown state before the index pulse happens.  Just set it to 0.  Well, maybe I could save the last known poscnt before the inverter was turned off?
 						// But how do you know when they are going to turn it off?!  You don't want to be constantly saving to EEProm.
@@ -1503,7 +1545,7 @@ void EESaveValues() {  // save the new stuff.
 	EEDataInRam1[14] = 0;
 	EEDataInRam1[15] = 0;									// crc computed later.
 
-	EEDataInRam2[0] = savedValues2.permanentMagnetRotorFluxAngleOffset;
+	EEDataInRam2[0] = savedValues2.angleOffset;
 	EEDataInRam2[1] = savedValues2.rotorTimeConstantIndex;
 	EEDataInRam2[2] = savedValues2.numberOfPolePairs;
 	EEDataInRam2[3] = savedValues2.maxRPM;
@@ -1564,7 +1606,7 @@ void MoveDataFromEEPromToRAM() {
 	_memcpy_p2d16(EEDataInRam2, EE_addr2, _EE_ROW);
 	_memcpy_p2d16(EEDataInRam3, EE_addr3, _EE_ROW);
 	_memcpy_p2d16(EEDataInRam4, EE_addr4, _EE_ROW);
-	for (i = 0; i < 15; i++) { // Skip the last one, which is CRC.
+	for (i = 0; i < 15; i++) { // Skip the last one, which is CRC. So, just go from 0 up to 14.
 		CRC1 += EEDataInRam1[i];
 		CRC2 += EEDataInRam2[i];
 		CRC3 += EEDataInRam3[i];
@@ -1626,8 +1668,10 @@ void MoveDataFromEEPromToRAM() {
 							savedValues.spares[0];
 	}
 	if (EEDataInRam3[15] == CRC3) {
-		savedValues2.permanentMagnetRotorFluxAngleOffset = EEDataInRam3[0];
+		savedValues2.angleOffset = EEDataInRam3[0];
+		myAngleOffsetTest.currentAngleOffset = savedValues2.angleOffset;	// this is the working copy
 		savedValues2.rotorTimeConstantIndex = EEDataInRam3[1];		// 
+		myRotorTest.timeConstantIndex = savedValues2.rotorTimeConstantIndex;	// this is the working copy
 		savedValues2.numberOfPolePairs = EEDataInRam3[2];						// 
 		savedValues2.maxRPM = EEDataInRam3[3];		// 
 		savedValues2.throttleType = EEDataInRam3[4];
@@ -1644,8 +1688,10 @@ void MoveDataFromEEPromToRAM() {
 		savedValues2.crc = EEDataInRam3[15];					// 
 	}
 	else if (EEDataInRam4[15] == CRC4) {
-		savedValues2.permanentMagnetRotorFluxAngleOffset = EEDataInRam4[0];
+		savedValues2.angleOffset = EEDataInRam4[0];
+		myAngleOffsetTest.currentAngleOffset = savedValues2.angleOffset;	// this is the working copy
 		savedValues2.rotorTimeConstantIndex = EEDataInRam4[1];		// 
+		myRotorTest.timeConstantIndex = savedValues2.rotorTimeConstantIndex;	// this is the working copy
 		savedValues2.numberOfPolePairs = EEDataInRam4[2];						// 
 		savedValues2.maxRPM = EEDataInRam4[3];		// 
 		savedValues2.throttleType = EEDataInRam4[4];
@@ -1663,7 +1709,9 @@ void MoveDataFromEEPromToRAM() {
 	}
 	else {	// There wasn't a single good copy.  Load the default configuration.
 		savedValues2 = savedValuesDefault2;
-		savedValues2.crc =  savedValues2.permanentMagnetRotorFluxAngleOffset + 
+		myAngleOffsetTest.currentAngleOffset = savedValues2.angleOffset;	// this is the working copy
+		myRotorTest.timeConstantIndex = savedValues2.rotorTimeConstantIndex;	// this is the working copy
+		savedValues2.crc =  savedValues2.angleOffset + 
 							savedValues2.rotorTimeConstantIndex + 
 							savedValues2.numberOfPolePairs + 
 							savedValues2.maxRPM + 
