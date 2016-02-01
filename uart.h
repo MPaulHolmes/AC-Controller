@@ -42,6 +42,7 @@ typedef struct dataStreamTyp {
 	volatile int slipSpeedRPM;
 	volatile int electricalSpeedRPM;
 	volatile int mechanicalSpeedRPM;
+
 } dataStream;
 
 void InitUART2();
