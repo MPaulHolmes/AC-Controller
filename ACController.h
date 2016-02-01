@@ -5,6 +5,7 @@
 #include <libpic30.h>
 
 #define PAULS_MOTOR
+//#define AC_INDUCTION_MOTOR_CONFIG
 
 #define I_TRIS_THROTTLE 		_TRISB0
 #define I_TRIS_CURRENT1			_TRISB1
@@ -83,7 +84,7 @@
 #define THROTTLE_FAULT (1u << 0)
 #define DESAT_FAULT (1u << 1)
 #define UART_FAULT (1u << 2)
-#define UV_FAULT (1u << 3)
+#define UNDERVOLTAGE_FAULT (1u << 3)
 #define OVERCURRENT_FAULT (1u << 4)
 
 #define VREF_FAULT (1u << 5)
@@ -119,20 +120,34 @@
 #define MAX_CURRENT_SENSOR_AMPS_PER_VOLT 480  // LEM Hass 300-s is 480.  Hass 50-s is 80.  Hass 600-s is 960.
 #define MAX_ROTOR_TIME_CONSTANT_INDEX 145u // valid indices are 0 to 145 inclusive.
 #define AC_INDUCTION_MOTOR 1
-#define PERMANENT_MAGNET_AC_MOTOR 2
+#define PERMANENT_MAGNET_AC_MOTOR_WITH_ENCODER 2
+#define PERMANENT_MAGNET_AC_MOTOR_WITH_RESOLVER 3
+
+#define MAX_CURRENT_ANGLE_OFFSET 511  		// the electrical angle is between 0 and 511 "degrees".  The offset between the index pulse and the magnetic north must be <= 511 electrical degrees.  THIS HAS NOTHING TO DO WITH ENCODER RESOLUTION!!!
 
 #ifdef PAULS_MOTOR
-	#define DEFAULT_CURRENT_SENSOR_AMPS_PER_VOLT 27 //480 //16 // default is the LEM Hass 50-s with 5 wraps at the moment.
-	#define MAX_MOTOR_AMPS 20
+	#define DEFAULT_ANGLE_OFFSET 119
+	#define DEFAULT_CURRENT_SENSOR_AMPS_PER_VOLT 80 // default is the LEM Hass 50-s with 1 pass through.
+	#define MAX_MOTOR_AMPS 50
 	#define MAX_BATTERY_AMPS_REGEN 10
 	#define MAX_BATTERY_AMPS 50
-	#define DEFAULT_ENCODER_TICKS 512
-	#define DEFAULT_KP 14000
-	#define DEFAULT_KI 225
+	#ifdef AC_INDUCTION_MOTOR_CONFIG
+		#define DEFAULT_MOTOR_TYPE AC_INDUCTION_MOTOR
+		#define DEFAULT_ENCODER_TICKS 512
+		#define DEFAULT_KP 14000
+		#define DEFAULT_KI 226
+		#define DEFAULT_NUM_POLE_PAIRS 2
+	#else
+		#define DEFAULT_MOTOR_TYPE PERMANENT_MAGNET_AC_MOTOR_WITH_RESOLVER
+		#define DEFAULT_ENCODER_TICKS 256
+		#define DEFAULT_KP 5000//9486
+		#define DEFAULT_KI 75//153//
+		#define DEFAULT_NUM_POLE_PAIRS 4
+	#endif
+
 	#define DEFAULT_PRECHARGE_TIME 5
 	#define DEFAULT_ROTOR_TIME_CONSTANT_INDEX 29
 	#define DEFAULT_MAX_RPS_TIMES16 1600
-	#define DEFAULT_NUM_POLE_PAIRS 2
 	#define DEFAULT_MAX_MECHANICAL_RPM 6000
 	#define DEFAULT_THROTTLE_TYPE 0 // 0 means either hall effect or MAX Ohms to 0 Ohm for zero throttle to max throttle.
 	#define DEFAULT_DATA_TO_DISPLAY_SET1 0b0000000000000000
@@ -177,7 +192,7 @@ typedef struct {
 } SavedValuesStruct;
 
 typedef struct {
-	unsigned int permanentMagnetRotorFluxAngleOffset;	// 0. 
+	unsigned int angleOffset;	// the offset between the permanent magnet's "north" and the angle that the encoder index pulse happens.  in [0, 511].
 	int rotorTimeConstantIndex;  	// 0. 31 and 32 is the best for my motor. 0 corresponds to rotor time constant of 0.005 seconds.  145 corresponds to 0.150 seconds.
 	int numberOfPolePairs;			// number of pole pairs.  If the nameplate says around 1700RPM on a 60Hz 3 phase, then it's 2 pole pairs.  3400RPM (or so) means 1 pole pair.
 	int maxRPM;
@@ -244,5 +259,14 @@ typedef struct {
 	int testRunning;
 	int testFinished;
 } rotorTestType;
+
+typedef struct {
+	unsigned int startTime;
+	int maxTestSpeed;
+	int bestAngleOffset;
+	int currentAngleOffset;
+	int testRunning;
+	int testFinished;
+} angleOffsetTestType;
 
 #endif
