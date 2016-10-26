@@ -1,3 +1,4 @@
+// AC CONTROL/DRIVER BOARD 1
 #include "UART.h"
 
 void ShowMenu(void);
@@ -15,13 +16,19 @@ extern void EESaveValues(void);
 extern void InitializeThrottleAndCurrentVariables(void);
 extern void TurnOffADAndPWM();
 extern void InitADAndPWM();
-
+extern void InitQEI();
 
 volatile UARTCommand myUARTCommand = {0,0,{0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0},0};
 
+extern volatile int debugMode;
 extern volatile int IqRefRef;
 extern volatile int IdRefRef;
+extern volatile int captureData;
+extern volatile int dataCaptureIndex;
+extern volatile int currentMaxIterationsBeforeZeroCrossing;
 
+extern volatile int vRef1;
+extern volatile int vRef2;
 extern volatile int maxRPS_times16;
 extern volatile unsigned int faultBits;
 extern volatile SavedValuesStruct savedValues;
@@ -33,17 +40,20 @@ extern volatile unsigned int counter1k;
 extern volatile piType myPI;
 extern volatile rotorTestType myRotorTest;
 extern volatile angleOffsetTestType myAngleOffsetTest;
+extern volatile motorSaliencyTestType myMotorSaliencyTest;
+extern volatile int bigArray1[];
 
-
+volatile int readyToDisplayBigArrays = 0;
 volatile dataStream myDataStream;
 
+volatile int timeSinceLastCarriageReturn = 0;
 volatile char newChar = 0;
 volatile int echoNewChar = 0;
 volatile dataStream myDataStream;
-volatile char intString[] = "xxxxxxxxxx";
+char intString[] = "xxxxxxxxxx";
 					//      0         1         2         3         4
 					//      01234567890123456789012345678901234567890	
-char showConfigString[] = {"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"};
+char showConfigString[] = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 
 void InitUART2() {
 	U2BRG = 15; //For 14.7MHz, 115200bps=7 38.4kbps==23.  For 29.5MHz, 115200bps == 15.
@@ -52,7 +62,7 @@ void InitUART2() {
 	U2MODEbits.STSEL = 0; // 1 stop bit.
 
 	IEC1bits.U2RXIE = 1;  // enable receive interrupts.
-	IPC6bits.U2RXIP = 2;	// INTERRUPT priority of 2.
+	IPC6bits.U2RXIP = 5;	// INTERRUPT priority of 2.
 //bit 7-6 URXISEL<1:0>: Receive Interrupt Mode Selection bit
 //11 =Interrupt flag bit is set when Receive Buffer is full (i.e., has 4 data characters)
 //10 =Interrupt flag bit is set when Receive Buffer is 3/4 full (i.e., has 3 data characters)
@@ -62,18 +72,24 @@ void InitUART2() {
 	U2MODEbits.UARTEN = 1; // enable the uart
 	asm("nop");
 	U2STAbits.UTXEN = 1; // Enable transmissions
+	Nop();Nop();Nop();Nop();
+	Nop();Nop();Nop();Nop();
+	U2STAbits.OERR = 0; // ClearReceiveBuffer();
 }
 
 void __attribute__((__interrupt__, auto_psv)) _U2RXInterrupt(void) {
 	IFS1bits.U2RXIF = 0;  // clear the interrupt.
 	echoNewChar = 1;
+	newChar = U2RXREG;		// get the character that caused the interrupt.
+
 
 	if (myUARTCommand.complete == 1) {	// just ignore everything until the command is processed.
 		return;
 	}
-	newChar = U2RXREG;		// get the character that caused the interrupt.
 
 	if (newChar == 0x0d) {	// carriage return.
+//		if (counter10k - timeSinceLastCarriageReturn < 2000) return;
+//		timeSinceLastCarriageReturn = counter10k;
 		myUARTCommand.complete = 1;
 		myUARTCommand.string[myUARTCommand.i] = 0;  // instead of placing a carriage return, place a 0 to null terminate the string.
 		return;
@@ -94,7 +110,7 @@ void __attribute__((__interrupt__, auto_psv)) _U2RXInterrupt(void) {
 void ProcessCommand(void) {
 	static int i = 0;
 	if (echoNewChar) {
-		StopAllMotorTests();		// also, stop the motor tests.
+//		StopAllMotorTests();		// also, stop the motor tests.
 		while (echoNewChar) {
 			if (U2STAbits.UTXBF == 0) { // TransmitReady();
 				U2TXREG = newChar; 	// SendCharacter(newChar);
@@ -128,20 +144,11 @@ void ProcessCommand(void) {
 			InitADAndPWM();
 		}		
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "motor-type")) {
-			if (myUARTCommand.number == 1) {
+			if (myUARTCommand.number > 0 && myUARTCommand.number < 5) {
 				TurnOffADAndPWM();
-				savedValues.motorType = AC_INDUCTION_MOTOR;
+				savedValues.motorType = myUARTCommand.number;
 				InitADAndPWM();
-			}
-			else if (myUARTCommand.number == 2) {
-				TurnOffADAndPWM();
-				savedValues.motorType = PERMANENT_MAGNET_AC_MOTOR_WITH_ENCODER;
-				InitADAndPWM();
-			}
-			else if (myUARTCommand.number == 3) {
-				TurnOffADAndPWM();
-				savedValues.motorType = PERMANENT_MAGNET_AC_MOTOR_WITH_RESOLVER;
-				InitADAndPWM();
+				InitQEI();
 			}
 		}
 		// Let's say you typed the command "kp 1035".  The following would have happened:
@@ -160,11 +167,17 @@ void ProcessCommand(void) {
 			}
 		}
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "angle-offset")){ 
-			if (myUARTCommand.number <= 511 && myUARTCommand.number > 0) {
+			if (myUARTCommand.number <= 511 && myUARTCommand.number >= 0) {
 				savedValues2.angleOffset = (unsigned int)(myUARTCommand.number); 	// this one is the extra for displaying on the screen.
 				myAngleOffsetTest.currentAngleOffset = savedValues2.angleOffset;  	// this is the working copy.
 			}
 		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "saliency")){ 
+			if (myUARTCommand.number <= 1024 && myUARTCommand.number >= 0) {  // 
+				savedValues2.KArrayIndex = (unsigned int)(myUARTCommand.number); 	// this one is the extra for displaying on the screen.
+				myMotorSaliencyTest.KArrayIndex = savedValues2.KArrayIndex;  	// this is the working copy.
+			}
+		}		
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "current-sensor-amps-per-volt")) {  // 
 			if (myUARTCommand.number <= 480 && myUARTCommand.number > 0) {
 				savedValues.currentSensorAmpsPerVolt = (int)(myUARTCommand.number); 
@@ -248,7 +261,7 @@ void ProcessCommand(void) {
 			}
 		}
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "encoder-ticks")) {
-			if (myUARTCommand.number <= 5000u && myUARTCommand.number >= 64) {
+			if (myUARTCommand.number <= 5000u && myUARTCommand.number >= 16) {
 				savedValues2.encoderTicks = (int)(myUARTCommand.number); 
 				revCounterMax = (unsigned)(160000L / (4*savedValues2.encoderTicks));  // 4* because I'm doing 4 times resolution for the encoder. 160,000 because revolutions per 16 seconds is computed as:  16*10,000*poscnt * rev/(maxPosCnt*revcounter*(16sec)
 				// revCounterMax may only be of use for the induction motor.
@@ -260,13 +273,23 @@ void ProcessCommand(void) {
 			}
 		}
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "run-pi-test")) {
+			currentMaxIterationsBeforeZeroCrossing = 20;
 			myPI.testRunning = 1;
-			myPI.testFailed = 1;	
 			myPI.testFinished = 0;
 			myPI.zeroCrossingIndex = -1;
-			myPI.previousTestCompletionTime = counter10k;
 			myPI.Kp = myPI.ratioKpKi;
 			myPI.Ki = 1;
+//			myPI.Kp = savedValues.Kp;
+//			myPI.Ki = savedValues.Ki;
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "run-pi-test2")) {
+			myPI.testRunning2 = 1;
+			myPI.zeroCrossingIndex = -1;
+			
+//			myPI.Kp = myPI.ratioKpKi;
+//			myPI.Ki = 1;
+			myPI.Kp = savedValues.Kp;
+			myPI.Ki = savedValues.Ki;
 		}
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "run-rotor-test")) {
 			if (savedValues.motorType == 1) {		
@@ -283,19 +306,40 @@ void ProcessCommand(void) {
 			}
 		}
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "run-angle-offset-test")) {
-			if (savedValues.motorType >= 2) {		
-				myAngleOffsetTest.startTime = counter10k;
-				myAngleOffsetTest.currentAngleOffset = 0;	// always start at zero, and then it will increment up to 511, giving each angle candidate 1 second to spin the motor the best it can.
-				myAngleOffsetTest.testRunning = 1;
-				myAngleOffsetTest.testFinished = 0;
-				myAngleOffsetTest.maxTestSpeed = 0;
-				myAngleOffsetTest.bestAngleOffset = 0;
+			if (savedValues.motorType >= 2) {
+				if (myUARTCommand.number < 512) {			// angleOffset is normalized to something in [0,511]
+					myAngleOffsetTest.startTime = counter10k;
+					myAngleOffsetTest.currentAngleOffset = myUARTCommand.number;	// it will increment up to 511, giving each angle candidate some time.
+					myAngleOffsetTest.testRunning = 1;
+					myAngleOffsetTest.testFinished = 0;
+					myAngleOffsetTest.testFailed = 1;
+//					myAngleOffsetTest.maxTestSpeed = 0;
+//					myAngleOffsetTest.bestAngleOffset = 0;
+				}
 			}
 			else {
 				TransmitString("Your motor type is AC induction.  This test is for a permanent maget AC motor!\r\n");
 				TransmitString("To change your motor to permanent maget, the command is 'motor-type 2'\r\n");
 			}
 		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "run-saliency-test")) {
+			if (savedValues.motorType >= 2) {
+				if (myUARTCommand.number < 1024) {  // What percent of the currentRadius should Id be (but negative)?
+					myMotorSaliencyTest.startTime = myMotorSaliencyTest.elapsedTime = counter10k;
+					myMotorSaliencyTest.KArrayIndex = myUARTCommand.number;	
+					myMotorSaliencyTest.testRunning = 1;
+					myMotorSaliencyTest.testFinished = 0;
+					myMotorSaliencyTest.testFailed = 1;
+//					myMotorSaliencyTest.maxTestSpeed = 0;
+//					myMotorSaliencyTest.bestKArrayIndex = 0;
+				}
+			}
+			else {
+				TransmitString("Your motor type is AC induction.  This test is for a permanent maget AC motor!\r\n");
+				TransmitString("To change your motor to permanent maget, the command is 'motor-type 2' or 'motor-type 3'\r\n");
+			}
+		}
+
 
 		else if ((!strcmp((const char *)&myUARTCommand.string[0], "config")) || (!strcmp((const char *)&myUARTCommand.string[0], "settings"))) {
 			ShowConfig();
@@ -525,28 +569,33 @@ void ProcessCommand(void) {
 				savedValues2.dataToDisplaySet2 &= ~512;
 			}
 		}
-
-		else if (myUARTCommand.string[0] == 0) {  // A carriage return.
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "debug")) {  // in milliseconds
+			if (myUARTCommand.number == 1) {
+				debugMode = 1;
+			}
+			else {
+				debugMode = 0;
+			}
+		}
+		else if (!strcmp((const char *)&myUARTCommand.string[0], "off")) {
 			if (myRotorTest.testRunning) {  // Stop the rotor test if it was running, and just keep the best value of the rotor time constant that you had found up to this point.
 				savedValues2.rotorTimeConstantIndex = myRotorTest.bestTimeConstantIndex;
+				myRotorTest.timeConstantIndex = savedValues2.rotorTimeConstantIndex;
+
 				myRotorTest.testRunning = 0;
 				myRotorTest.testFinished = 1;
-				IdRefRef = 0;
-				IqRefRef = 0;
+//				currentRadiusRefRef = 0;
 			}
 			else if (myPI.testRunning) { // Stop the PI test if it was running.
-				myPI.testRunning = 0;
+				currentMaxIterationsBeforeZeroCrossing = 20;
+				InitPIStruct();
 				myPI.testFailed = 1;
 				myPI.testFinished = 1;
-				IdRefRef = 0;
-				IqRefRef = 0;
+//				currentRadiusRefRef = 0;
 			}
-			if (myAngleOffsetTest.testRunning) {  // Stop the rotor test if it was running, and just keep the best value of the rotor time constant that you had found up to this point.
-				savedValues2.angleOffset = myAngleOffsetTest.bestAngleOffset;
+			if (myAngleOffsetTest.testRunning) {  // 
 				myAngleOffsetTest.testRunning = 0;
 				myAngleOffsetTest.testFinished = 1;
-				IdRefRef = 0;
-				IqRefRef = 0;
 			}
 			myDataStream.period = 0;  // Stop the data stream if it was running.  I already do this any time a key is hit, so this is redundant.
 			// if the PI test is running, terminate it.
@@ -555,37 +604,36 @@ void ProcessCommand(void) {
 
 			ShowMenu();
 		}
+
+		else if (!strcmp((const char*)&myUARTCommand.string[0], "swap-ab")) {
+			savedValues2.swapAB = (myUARTCommand.number & 1);
+			QEICONbits.SWPAB = savedValues2.swapAB;
+		}
 		else if (!strcmp((const char*)&myUARTCommand.string[0], "2")) {
-			if (IqRefRef < 1000) {
-				IqRefRef += 10;
-				if (IqRefRef > 0) {
-					IdRefRef = IqRefRef;
-				}
-				else {
-					IdRefRef = -IqRefRef;
-				}
+			if (myAngleOffsetTest.currentAngleOffset < 511-5) {
+				myAngleOffsetTest.currentAngleOffset+=5;
+				savedValues2.angleOffset = myAngleOffsetTest.currentAngleOffset;  	// this is the working copy.
 			}
 		}
 		else if (!strcmp((const char*)&myUARTCommand.string[0], "1")) {
-			if (IqRefRef > -1000) {
-				IqRefRef -= 10;
-				if (IqRefRef > 0) {
-					IdRefRef = IqRefRef;
-				}
-				else {
-					IdRefRef = -IqRefRef;
-				}
+			if (myAngleOffsetTest.currentAngleOffset >= 5) {
+				myAngleOffsetTest.currentAngleOffset-=5;
+				savedValues2.angleOffset = myAngleOffsetTest.currentAngleOffset;  	// this is the working copy.
 			}
 		}
-		else if (!strcmp((const char*)&myUARTCommand.string[0], "0")) {
-	//		faultBits |= 16384;
-			IdRefRef = 0;
-			IqRefRef = 0;
+//		else if (!strcmp((const char*)&myUARTCommand.string[0], "4")) {
+//		}
+//		else if (!strcmp((const char*)&myUARTCommand.string[0], "3")) {
+//		}
+		else if (!strcmp((const char*)&myUARTCommand.string[0], "c")) {
+			dataCaptureIndex = 0;
+			captureData = 1;
 		}
+
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "?")) {  // show the valid list of commands
 			TransmitString("List of valid commands:\r\n");
 			TransmitString("save\r\n");
-			TransmitString("motor-type xxx (1 means induction, 2 means permanent magnet)\r\n");
+			TransmitString("motor-type xxx (rangle 1-4)\r\n");
 			TransmitString("kp xxx (range 0-32767)\r\n");
 			TransmitString("ki xxx (range 0-32767)\r\n");
 			TransmitString("current-sensor-amps-per-volt xxx (range 0-480)\r\n");
@@ -605,9 +653,12 @@ void ProcessCommand(void) {
 			TransmitString("throttle-type xxx (range 0-1)\r\n");
 			TransmitString("encoder-ticks xxx (range 64-5000)\r\n");
 			TransmitString("pi-ratio xxx (range 50-1000.  pi-ratio = Kp/Ki)\r\n");
+			TransmitString("angle-offset xxx (range 0-511)\r\n");
+			TransmitString("saliency xxx (range 0-1023)\r\n");
 			TransmitString("run-pi-test\r\n");
 			TransmitString("run-rotor-test\r\n");
-			TransmitString("run-angle-offset-test\r\n");			
+			TransmitString("run-angle-offset-test\r\n");
+			TransmitString("run-saliency-test\r\n");			
 			TransmitString("config\r\n");
 			TransmitString("data-stream-period xxx (range 0-32767)\r\n");
 			TransmitString("data\r\n");
@@ -628,7 +679,8 @@ void ProcessCommand(void) {
 			TransmitString("stream-electrical-speed xxx (range 0-1)\r\n");
 			TransmitString("stream-mechanical-speed xxx (range 0-1)\r\n");
 			TransmitString("stream-poscnt xxx (range 0-1)\r\n");
-			TransmitString("<carriage return> (this stops the data stream)\r\n");
+			TransmitString("off (this stops the data stream)\r\n");
+			TransmitString("swap-ab xxx (range 0-1)\r\n"); 
 		}
 		else {
 			TransmitString("Invalid command.  Type '?' to see a valid list of commands.\r\n");
@@ -650,6 +702,8 @@ void StopAllMotorTests() {
 	myRotorTest.testFinished = 0;
 	myAngleOffsetTest.testRunning = 0;	// stop the permanent magnet angle offset search if there was one.
 	myAngleOffsetTest.testFinished = 0;	
+	myMotorSaliencyTest.testRunning = 0;	// stop the permanent magnet angle offset search if there was one.
+	myMotorSaliencyTest.testFinished = 0;	
 }
 
 void ShowConfig() {
@@ -728,25 +782,33 @@ void ShowConfig() {
 		TransmitString(showConfigString);
 
 		if (savedValues.motorType == 1) {
-	// **NOW WE ARE IN SavedValues2**
-	// 0         1         2         3         4         5
-	// 012345678901234567890123456789012345678901234567890123456789
-	// rotor-time-constant=xxx ms\r\n
-	//
+			// **NOW WE ARE IN SavedValues2**
+			// 0         1         2         3         4         5
+			// 012345678901234567890123456789012345678901234567890123456789
+			// rotor-time-constant=xxx ms\r\n
+			//
 			strcpy(showConfigString,"rotor-time-constant=xxx ms\r\n");
 			u16_to_str(&showConfigString[20], savedValues2.rotorTimeConstantIndex+5, 3);  // for display purposes, add 5 so it's millisec.
 			TransmitString(showConfigString);
 		}
 		else {
-	// **NOW WE ARE IN SavedValues2**
-	// 0         1         2         3         4         5
-	// 012345678901234567890123456789012345678901234567890123456789
-	// angle-offset=xxx\r\n
-	//
+			// **NOW WE ARE IN SavedValues2**
+			// 0         1         2         3         4         5
+			// 012345678901234567890123456789012345678901234567890123456789
+			// angle-offset=xxx\r\n
+			//
 			strcpy(showConfigString,"angle-offset=xxx\r\n");
 			u16_to_str(&showConfigString[13], savedValues2.angleOffset, 3);  // for display purposes, add 5 so it's millisec.
 			TransmitString(showConfigString);			
+			// 0         1         2         3         4         5
+			// 012345678901234567890123456789012345678901234567890123456789
+			// saliency=xxxx\r\n
+			//
+			strcpy(showConfigString,"saliency=xxxx\r\n");
+			u16_to_str(&showConfigString[9], savedValues2.KArrayIndex, 4);  // for display purposes, add 5 so it's millisec.
+			TransmitString(showConfigString);			
 		}
+
 	// 0         1         2         3         4         5
 	// 012345678901234567890123456789012345678901234567890123456789
 	// pole-pairs=xxx\r\n
@@ -864,7 +926,7 @@ int TransmitString(const char* str) {  // For echoing onto the display
 	unsigned int i = 0;
 	unsigned int now = 0;
 	
-	now = TMR5;	// timer 4 runs at 59KHz.  Timer5 is the high word of the 32 bit timer.  So, it updates about 1 time per second.
+//	now = TMR5;	// timer 4 runs at 59KHz.  Timer5 is the high word of the 32 bit timer.  So, it updates about 1 time per second.
 	while (1) {
 		if (str[i] == 0) {
 			return 1;
@@ -873,13 +935,13 @@ int TransmitString(const char* str) {  // For echoing onto the display
 			U2TXREG = str[i]; 	// SendCharacter(str[i]);
 			i++;
 		}
-		if (TMR5 - now > 5) { 	// 5 seconds
-			faultBits |= UART_FAULT;
-			return 0;
-		}
-		#ifndef DEBUG 
-			ClrWdt();
-		#endif
+//		if (TMR5 - now > 5000) { 	// 5 seconds
+//			faultBits |= UART_FAULT;
+//			return 0;
+//		}
+//		#ifndef DEBUG 
+//			ClrWdt();
+//		#endif
 	}
 }
 
@@ -1101,3 +1163,19 @@ void StreamData() {
 
 	TransmitString("\r\n");
 }
+
+void TransmitBigArrays() {
+	int i = 0;
+	if (readyToDisplayBigArrays) {
+		readyToDisplayBigArrays = 0;
+		for (i = 0; i < 254; i++) {
+			int16_to_str((char *)&intString[0], bigArray1[i], 4);  // intString[] = "+0345".  Now, add a comma and null terminate it.
+			intString[5] = ',';
+			intString[6] = 0;	
+			TransmitString((char *)&intString[0]);
+			ClrWdt();
+		}
+		TransmitString("\r\n\r\n");
+	}
+}
+
