@@ -1,9 +1,6 @@
+// AC CONTROL/DRIVER BOARD 1
 #ifndef UART4011_H
 #define UART4011_H
-#include "p30F4011.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include "ACController.h"
 
 
@@ -42,7 +39,6 @@ typedef struct dataStreamTyp {
 	volatile int slipSpeedRPM;
 	volatile int electricalSpeedRPM;
 	volatile int mechanicalSpeedRPM;
-
 } dataStream;
 
 void InitUART2();
