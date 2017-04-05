@@ -1,4 +1,4 @@
-// AC CONTROL/DRIVER BOARD 1
+// AC CONTROL/DRIVER BOARD 21
 #ifndef CONTROLLER_H
 #define CONTROLLER_H
 #include "p30F4011.h"
@@ -19,13 +19,13 @@
 #define I_TRIS_INDEX			_TRISB3
 #define I_TRIS_QEA				_TRISB4
 #define I_TRIS_QEB				_TRISB5
-#define O_TRIS_CLEAR_FLIP_FLOP			_TRISB6
+#define I_TRIS_BRAKE			_TRISB6
 #define I_TRIS_TEMPERATURE		_TRISB7
-//#define I_TRIS_VOLTAGE			_TRISB8
-#define I_TRIS_UNDERVOLTAGE_FAULT	_TRISE8
-#define I_TRIS_OVERCURRENT_FAULT	_TRISC14
-#define I_TRIS_DESAT_FAULT 		_TRISC13
-#define O_TRIS_LED  			_TRISD1 // high means turn ON the LED.
+#define I_TRIS_VOLTAGE			_TRISB8
+#define I_TRIS_UNDERVOLTAGE_FAULT	_TRISC13
+#define I_TRIS_DESAT_FAULT 		_TRISC14
+#define O_TRIS_CLEAR_FLIP_FLOP	_TRISE8
+#define I_TRIS_OVERTEMP			_TRISD1 //
 #define O_TRIS_PRECHARGE_RELAY	_TRISD3	// HIGH means turn ON the precharge relay.
 #define I_TRIS_GLOBAL_FAULT		_TRISD2
 #define O_TRIS_CONTACTOR		_TRISD0
@@ -37,22 +37,22 @@
 #define O_TRIS_PWM_1H			_TRISE1
 #define O_TRIS_PWM_1L			_TRISE0
 
-#define I_LAT_THROTTLE 		_LATB0
+#define I_LAT_THROTTLE 			_LATB0
 #define I_LAT_CURRENT1			_LATB1
 #define I_LAT_CURRENT2			_LATB2
-#define I_LAT_INDEX			_LATB3
+#define I_LAT_INDEX				_LATB3
 #define I_LAT_QEA				_LATB4
 #define I_LAT_QEB				_LATB5
-#define O_LAT_CLEAR_FLIP_FLOP			_LATB6
+#define I_LAT_BRAKE				_LATB6
 #define I_LAT_TEMPERATURE		_LATB7
-//#define I_LAT_VOLTAGE			_LATB8
-#define I_LAT_UNDERVOLTAGE_FAULT	_LATE8
-#define I_LAT_OVERCURRENT_FAULT	_LATC14
-#define I_LAT_DESAT_FAULT 		_LATC13
-#define O_LAT_LED  			_LATD1 // high means turn ON the LED.
+#define I_LAT_VOLTAGE			_LATB8
+#define I_LAT_UNDERVOLTAGE_FAULT	_LATC13
+#define I_LAT_DESAT_FAULT 		_LATC14
+#define O_LAT_CLEAR_FLIP_FLOP	_LATE8
+#define I_LAT_OVERTEMP			_LATD1 // Low means BAD!  too hot!
 #define O_LAT_PRECHARGE_RELAY	_LATD3	// HIGH means turn ON the precharge relay.
 #define I_LAT_GLOBAL_FAULT		_LATD2
-#define O_LAT_CONTACTOR		_LATD0
+#define O_LAT_CONTACTOR			_LATD0
 #define O_LAT_CLEAR_DESAT		_LATF6
 #define O_LAT_PWM_3H			_LATE5
 #define O_LAT_PWM_3L			_LATE4
@@ -67,13 +67,13 @@
 #define I_PORT_INDEX			_RB3
 #define I_PORT_QEA				_RB4
 #define I_PORT_QEB				_RB5
-#define O_PORT_CLEAR_FLIP_FLOP	_RB6
+#define I_PORT_BRAKE			_RB6
 #define I_PORT_TEMPERATURE		_RB7
-//#define I_PORT_VOLTAGE		_RB8
-#define I_PORT_UNDERVOLTAGE_FAULT	_RE8
-#define I_PORT_OVERCURRENT_FAULT	_RC14
-#define I_PORT_DESAT_FAULT 		_RC13
-#define O_PORT_LED  			_RD1 // high means turn ON the LED.
+#define I_PORT_VOLTAGE			_RB8
+#define I_PORT_UNDERVOLTAGE_FAULT	_RC13
+#define I_PORT_DESAT_FAULT 		_RC14
+#define O_PORT_CLEAR_FLIP_FLOP	_RE8
+#define I_PORT_OVERTEMP			_RD1 // if it is low, there has been an overtemp.
 #define O_PORT_PRECHARGE_RELAY	_RD3	// HIGH means turn ON the precharge relay.
 #define I_PORT_GLOBAL_FAULT		_RD2
 #define O_PORT_CONTACTOR		_RD0
@@ -84,6 +84,7 @@
 #define O_PORT_PWM_2L			_RE2
 #define O_PORT_PWM_1H			_RE1
 #define O_PORT_PWM_1L			_RE0
+
 
 #define THROTTLE_RAMP_RATE 1
 
