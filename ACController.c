@@ -1,4 +1,4 @@
-// AC CONTROL/DRIVER BOARD 1
+// AC CONTROL/DRIVER BOARD 17
 #include "ACController.h"
 
 /*****************Config bit settings****************/
@@ -183,7 +183,6 @@ volatile unsigned int notShownFaultYet = 0x0FFFF;  // This is so you see immedia
 volatile int poscnt = 0;
 volatile int poscntOld = 0;
 volatile int rotorFluxRPS_times16 = 0;
-volatile int debugMode = 0;
 
 volatile unsigned int rotorFluxAngle = 1; 		// This is the rotor flux angle. In [0, 511]
 volatile int RPS_times16 = 0; // range [-3200, 3200], where 3200 corresponds to 200rev/sec = 12,000RPM, and 0 means 0RPM.
@@ -621,27 +620,26 @@ void __attribute__ ((__interrupt__,auto_psv)) _ADCInterrupt(void) {
 	// SpaceVectorModulation:
 	// You now turn Va, Vb, Vc into duties for PDC1, PDC2, PDC3.  
 
-	if (debugMode) {
-		PDC1 = 1474;
-		PDC2 = 1474;
-		PDC3 = 1474;
+#ifdef DEBUG_MODE
+	PDC1 = 1474;
+	PDC2 = 1474;
+	PDC3 = 1474;
+#else
+	if (faultBits == 0) {  // check again before poceeding, since there could have been a fault just above.
+		SpaceVectorModulation();
 	}
 	else {
-		if (faultBits == 0) {  // check again before poceeding, since there could have been a fault just above.
-			SpaceVectorModulation();
-		}
-		else {
-			PDC1 = 0;
-			PDC2 = 0;
-			PDC3 = 0;
-			myPI.error_d = 0l;
-			myPI.pwm_d = 0l;  
-			myPI.errorSum_d = 0l;
-			myPI.error_q = 0l;
-			myPI.pwm_q = 0l;  
-			myPI.errorSum_q = 0l;		
-		}
+		PDC1 = 0;
+		PDC2 = 0;
+		PDC3 = 0;
+		myPI.error_d = 0l;
+		myPI.pwm_d = 0l;  
+		myPI.errorSum_d = 0l;
+		myPI.error_q = 0l;
+		myPI.pwm_q = 0l;  
+		myPI.errorSum_q = 0l;		
 	}
+#endif
 	elapsedTimeInterrupt = TMR4 - startTimeInterrupt;
 }
 
@@ -1269,17 +1267,17 @@ void InitIORegisters() {
 	I_TRIS_INDEX	= 1;		// 1 means configure as input.  encoder index.  1 pulse per revolution.
 	I_TRIS_QEA		= 1;		// 1 means configure as input.  encoder QEA
 	I_TRIS_QEB		= 1;		// 1 means configure as input.  encoder QEB
-//	I_TRIS_BRAKE	= 1;		// 1 means configure as input.  analog brake input.
+	I_TRIS_BRAKE	= 1;		// 1 means configure as input.  analog brake input.
 	I_TRIS_TEMPERATURE = 1;		// 1 means configure as input.  A/D temperatureBasePlate.
-//	I_TRIS_VOLTAGE = 1;			// 1 means configure as input.  DC voltage.
+	I_TRIS_VOLTAGE = 1;			// 1 means configure as input.  DC voltage.
 	I_TRIS_UNDERVOLTAGE_FAULT = 1;	// 1 means configure as input.  undervoltage fault.
 	I_TRIS_DESAT_FAULT = 1;		// 1 means configure as input.  desat fault.
+	I_TRIS_OVERTEMP = 1;		// 1 means configure as input. If this is 0, an overtemperature event has happened.
+
 
 	O_TRIS_CLEAR_FLIP_FLOP = 0;	// 0 means configure as output. clear flip flop.
 	O_LAT_CLEAR_FLIP_FLOP = 1;  // bring LOW, then HIGH to clear the flip flop.
 
-	O_TRIS_LED = 0; 			// 0 means configure as output.  Status LED.
-	O_LAT_LED = 0; 				 // LOW means turn ON the LED.
 
 	O_TRIS_PRECHARGE_RELAY = 0;	// 0 means configure as output.  precharge relay control.
 	O_LAT_PRECHARGE_RELAY = 0;	// HIGH means turn ON the precharge relay.
