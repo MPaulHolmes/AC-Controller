@@ -1,4 +1,4 @@
-// AC CONTROL/DRIVER BOARD 1
+// AC CONTROL/DRIVER BOARD 21
 #include "UART.h"
 
 void ShowMenu(void);
@@ -20,7 +20,6 @@ extern void InitQEI();
 
 volatile UARTCommand myUARTCommand = {0,0,{0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0},0};
 
-extern volatile int debugMode;
 extern volatile int IqRefRef;
 extern volatile int IdRefRef;
 extern volatile int captureData;
@@ -569,14 +568,7 @@ void ProcessCommand(void) {
 				savedValues2.dataToDisplaySet2 &= ~512;
 			}
 		}
-		else if (!strcmp((const char *)&myUARTCommand.string[0], "debug")) {  // in milliseconds
-			if (myUARTCommand.number == 1) {
-				debugMode = 1;
-			}
-			else {
-				debugMode = 0;
-			}
-		}
+
 		else if (!strcmp((const char *)&myUARTCommand.string[0], "off")) {
 			if (myRotorTest.testRunning) {  // Stop the rotor test if it was running, and just keep the best value of the rotor time constant that you had found up to this point.
 				savedValues2.rotorTimeConstantIndex = myRotorTest.bestTimeConstantIndex;
